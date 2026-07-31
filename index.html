@@ -48,7 +48,19 @@
   body[data-theme="dark"]{
     --wood-1:#7a5a36; --wood-2:#5e4426; --wood-3:#43301a;
     --text-on-ink:#e9e2d0;
+    --paper:#1e242c;
+    --paper-2:#272f39;
+    --paper-line:#333f4c;
+    --margin-red:#8a4a4a;
+    --text-on-paper:#e7e2d5;
   }
+  body[data-theme="dark"] .toolbar select,
+  body[data-theme="dark"] .title-input::placeholder{ background:var(--paper); }
+  body[data-theme="dark"] .toolbar select{ color:var(--text-on-paper); border-color:#3d4a58; }
+  body[data-theme="dark"] .editor td, body[data-theme="dark"] .editor th{ border-color:#3d4a58; }
+  body[data-theme="dark"] .title-input::placeholder,
+  body[data-theme="dark"] .welcome,
+  body[data-theme="dark"] .save-status{ color:#8996a6; }
   ::selection{ background:var(--brass); color:var(--ink); }
   button{ font-family:inherit; cursor:pointer; }
   input, textarea{ font-family:inherit; }
@@ -196,6 +208,10 @@
     color:var(--text-on-paper); font-size:12.5px; font-family:var(--font-mono);
   }
   .toolbar select:hover{ border-color:var(--brass); }
+  .toolbar input[type="color"]{
+    width:34px; height:32px; padding:2px; border:1px solid #cbbd9a; border-radius:var(--radius);
+    background:#fffdf8; cursor:pointer;
+  }
 
   .paper-margin-line{
     position:absolute; top:0; bottom:0; left:70px; width:2px; background:var(--margin-red); opacity:.55; z-index:1;
@@ -388,6 +404,7 @@
         <option value="32">32</option>
         <option value="40">40</option>
       </select>
+      <input type="color" id="fontColorPicker" value="#2e2a1f" onchange="setFontColor(this.value)" title="Textfärg">
       <div class="sep"></div>
       <button onclick="fmt('bold')"><b>B</b></button>
       <button onclick="fmt('italic')"><i>I</i></button>
@@ -399,6 +416,7 @@
       <div class="sep"></div>
       <button onclick="insertLink()">🔗 Länk</button>
       <button onclick="insertTable()">▦ Tabell</button>
+      <button onclick="makeTableFullWidth()">⛶ Tabell: fyll sidan</button>
       <button onclick="document.getElementById('imageInput').click()">🖼 Bild</button>
       <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="insertImage(event)">
     </div>
@@ -770,6 +788,34 @@ function setFontSize(px){
   editor.querySelectorAll('font[size="7"]').forEach(f => {
     f.removeAttribute('size');
     f.style.fontSize = px + 'px';
+  });
+  scheduleSave();
+}
+
+function setFontColor(color){
+  document.getElementById('editor').focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('foreColor', false, color);
+  scheduleSave();
+}
+
+function makeTableFullWidth(){
+  const editor = document.getElementById('editor');
+  const sel = window.getSelection();
+  let node = sel.rangeCount ? sel.getRangeAt(0).commonAncestorContainer : null;
+  if(node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  let table = node ? node.closest ? node.closest('table') : null : null;
+  if(!table){
+    // fall back: if there's exactly one table in the note, use it
+    const tables = editor.querySelectorAll('table');
+    if(tables.length === 1) table = tables[0];
+  }
+  if(!table){ alert('Placera markören inuti tabellen du vill fylla sidan med (eller se till att anteckningen bara har en tabell).'); return; }
+  table.style.width = '100%';
+  table.removeAttribute('width');
+  table.querySelectorAll('td, th').forEach(cell => {
+    cell.style.width = '';
+    cell.removeAttribute('width');
   });
   scheduleSave();
 }
