@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Anteckningsboken</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Merriweather:wght@400;700&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:#151b24;
@@ -172,6 +172,11 @@
   }
   .toolbar button:hover{ background:var(--paper-2); }
   .toolbar .sep{ width:1px; background:#cbbd9a; margin:4px 6px; }
+  .toolbar select{
+    padding:6px 8px; border:1px solid #cbbd9a; border-radius:var(--radius); background:#fffdf8;
+    color:var(--text-on-paper); font-size:12.5px; font-family:var(--font-mono);
+  }
+  .toolbar select:hover{ border-color:var(--brass); }
 
   .editor-wrap{ flex:1; overflow-y:auto; padding:26px 34px 60px 34px; }
   .editor{
@@ -321,6 +326,28 @@
       <input type="text" id="tagsInput" placeholder="lägg till tagg, enter" onkeydown="handleTagInput(event)">
     </div>
     <div class="toolbar" id="toolbarRow">
+      <select id="fontFamilySelect" onchange="setFontFamily(this.value)" title="Typsnitt">
+        <option value="Inter, sans-serif">Standard</option>
+        <option value="'Fraunces', serif">Rubrik-serif</option>
+        <option value="'Merriweather', serif">Läsvänlig serif</option>
+        <option value="Georgia, serif">Georgia</option>
+        <option value="Verdana, sans-serif">Verdana</option>
+        <option value="'JetBrains Mono', monospace">Mono</option>
+        <option value="'Courier New', monospace">Skrivmaskin</option>
+        <option value="'Caveat', cursive">Handstil</option>
+      </select>
+      <select id="fontSizeSelect" onchange="setFontSize(this.value)" title="Textstorlek">
+        <option value="12">12</option>
+        <option value="14">14</option>
+        <option value="16" selected>16</option>
+        <option value="18">18</option>
+        <option value="20">20</option>
+        <option value="24">24</option>
+        <option value="28">28</option>
+        <option value="32">32</option>
+        <option value="40">40</option>
+      </select>
+      <div class="sep"></div>
       <button onclick="fmt('bold')"><b>B</b></button>
       <button onclick="fmt('italic')"><i>I</i></button>
       <button onclick="fmt('underline')"><u>U</u></button>
@@ -656,6 +683,27 @@ function escapeHtml(str){ const d = document.createElement('div'); d.textContent
 function fmt(cmd, val){
   document.getElementById('editor').focus();
   document.execCommand(cmd, false, val || null);
+  scheduleSave();
+}
+
+function setFontFamily(family){
+  document.getElementById('editor').focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontName', false, family);
+  scheduleSave();
+}
+
+function setFontSize(px){
+  const editor = document.getElementById('editor');
+  editor.focus();
+  // execCommand only supports relative sizes 1-7, so use it as a marker
+  // then swap the inserted <font size="7"> tags for real pixel sizing.
+  document.execCommand('styleWithCSS', false, false);
+  document.execCommand('fontSize', false, '7');
+  editor.querySelectorAll('font[size="7"]').forEach(f => {
+    f.removeAttribute('size');
+    f.style.fontSize = px + 'px';
+  });
   scheduleSave();
 }
 
