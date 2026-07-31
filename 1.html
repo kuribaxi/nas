@@ -34,7 +34,25 @@
     color:var(--text-on-ink);
     font-family:var(--font-body);
     min-height:100vh;
+    transition:background .2s ease, color .2s ease;
   }
+  body[data-theme="light"]{
+    --ink:#faf6ec;
+    --ink-2:#f2ead4;
+    --paper:#fffdf8;
+    --paper-2:#f0e8d2;
+    --text-on-ink:#2a2618;
+    --muted:#8a7f63;
+  }
+  body[data-theme="light"]{ background: var(--ink); }
+  body[data-theme="light"] .sidebar,
+  body[data-theme="light"] .auth-card{ border-color:#ddd0ac; }
+  body[data-theme="light"] .field input,
+  body[data-theme="light"] .search,
+  body[data-theme="light"] .icon-btn{ background:#fffdf8; border-color:#ddd0ac; color:#2a2618; }
+  body[data-theme="light"] .note-item.active{ background:#efe4c8; }
+  body[data-theme="light"] .note-item:hover{ background:#f5eddb; }
+  body[data-theme="light"] .toolbar{ background:#e9dfc7; }
   ::selection{ background:var(--brass); color:var(--ink); }
   button{ font-family:inherit; cursor:pointer; }
   input, textarea{ font-family:inherit; }
@@ -184,6 +202,45 @@
     .menu-toggle{ display:inline-flex !important; }
   }
   .menu-toggle{ display:none; background:transparent; border:1px solid #cbbd9a; border-radius:var(--radius); padding:8px 10px; color:var(--text-on-paper); }
+
+  /* ---------- Theme toggle ---------- */
+  .theme-toggle{
+    background:transparent; border:1px solid #3a4557; border-radius:var(--radius);
+    padding:8px 10px; color:var(--text-on-ink); font-size:13px; margin-left:auto;
+  }
+  .theme-toggle:hover{ border-color:var(--brass); }
+  .brand-row{ display:flex; align-items:center; }
+
+  /* ---------- Tags ---------- */
+  .tags-row{ padding:0 34px 12px 34px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--paper); }
+  .tags-row input{
+    border:none; background:transparent; font-family:var(--font-mono); font-size:12px;
+    color:var(--text-on-paper); flex:1; min-width:120px; padding:4px 0;
+  }
+  .tags-row input::placeholder{ color:#a89a7c; }
+  .tag-chip{
+    font-family:var(--font-mono); font-size:10.5px; letter-spacing:.03em; padding:3px 9px;
+    border-radius:20px; background:var(--teal); color:#eaf3f1; white-space:nowrap;
+  }
+  .tag-filter-row{ display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 12px 18px; }
+  .tag-filter-chip{
+    font-family:var(--font-mono); font-size:10px; padding:4px 9px; border-radius:20px;
+    border:1px solid #3a4557; color:var(--muted); background:transparent;
+  }
+  .tag-filter-chip.active{ background:var(--brass); border-color:var(--brass); color:#1b1204; }
+  .note-tags{ display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+  .note-tags .tag-chip{ font-size:9px; padding:2px 7px; }
+
+  .export-menu{ position:relative; }
+  .export-dropdown{
+    position:absolute; top:110%; right:0; background:var(--ink-2); border:1px solid #3a4557;
+    border-radius:var(--radius); min-width:150px; z-index:20; overflow:hidden;
+  }
+  .export-dropdown button{
+    width:100%; text-align:left; padding:10px 14px; background:transparent; border:none;
+    color:var(--text-on-ink); font-size:12.5px; font-family:var(--font-mono);
+  }
+  .export-dropdown button:hover{ background:#232d3c; }
 </style>
 </head>
 <body>
@@ -228,10 +285,14 @@
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
-      <div class="brand"><span class="dot"></span><span>Anteckningsboken</span></div>
+      <div class="brand-row">
+        <div class="brand"><span class="dot"></span><span>Anteckningsboken</span></div>
+        <button class="theme-toggle" id="themeToggleBtn" onclick="toggleTheme()" title="Byt tema">🌙</button>
+      </div>
       <input class="search" id="searchInput" type="text" placeholder="Sök anteckningar…" oninput="renderList()">
     </div>
     <button class="new-note-btn" onclick="createNote()">+ Ny anteckning</button>
+    <div class="tag-filter-row" id="tagFilterRow"></div>
     <div class="note-list" id="noteList"></div>
     <div class="sidebar-foot">
       <button class="icon-btn" onclick="exportData()">Exportera</button>
@@ -246,6 +307,18 @@
       <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
       <input class="title-input" id="titleInput" placeholder="Titel…" oninput="scheduleSave()">
       <span class="save-status" id="saveStatus"></span>
+      <div class="export-menu" id="exportMenu">
+        <button class="icon-btn" style="padding:9px 12px;" onclick="toggleExportMenu()">Exportera ▾</button>
+        <div class="export-dropdown hidden" id="exportDropdown">
+          <button onclick="exportNoteMarkdown()">Som Markdown (.md)</button>
+          <button onclick="exportNotePdf()">Som PDF (skriv ut)</button>
+        </div>
+      </div>
+    </div>
+    <div class="tags-row" id="tagsRow">
+      <span style="font-family:var(--font-mono); font-size:11px; color:#a89a7c;">Taggar:</span>
+      <div id="tagChipsDisplay" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      <input type="text" id="tagsInput" placeholder="lägg till tagg, enter" onkeydown="handleTagInput(event)">
     </div>
     <div class="toolbar" id="toolbarRow">
       <button onclick="fmt('bold')"><b>B</b></button>
@@ -283,6 +356,25 @@ let cryptoKey = null;         // in-memory only
 let notes = [];               // decrypted notes array, in memory only
 let activeNoteId = null;
 let saveTimer = null;
+let activeTagFilter = null;
+
+/* ============================================================
+   Theme (non-sensitive UI preference, stored in plain localStorage)
+============================================================ */
+const K_THEME = 'nb_theme';
+function initTheme(){
+  const saved = localStorage.getItem(K_THEME) || 'dark';
+  document.body.setAttribute('data-theme', saved);
+  document.getElementById('themeToggleBtn').textContent = saved === 'dark' ? '🌙' : '☀️';
+}
+function toggleTheme(){
+  const current = document.body.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', next);
+  localStorage.setItem(K_THEME, next);
+  document.getElementById('themeToggleBtn').textContent = next === 'dark' ? '🌙' : '☀️';
+}
+initTheme();
 
 /* ============================================================
    Crypto helpers (WebCrypto: PBKDF2 -> AES-GCM)
@@ -416,7 +508,7 @@ async function persist(){
 }
 
 function createNote(){
-  const note = { id: crypto.randomUUID(), title:'', content:'', updated: Date.now() };
+  const note = { id: crypto.randomUUID(), title:'', content:'', tags:[], updated: Date.now() };
   notes.unshift(note);
   activeNoteId = note.id;
   renderList();
@@ -446,18 +538,70 @@ function loadNoteIntoEditor(note){
   document.getElementById('welcome').classList.add('hidden');
   document.getElementById('titleInput').classList.remove('hidden');
   document.getElementById('toolbarRow').classList.remove('hidden');
+  document.getElementById('tagsRow').classList.remove('hidden');
+  document.getElementById('exportMenu').classList.remove('hidden');
   document.getElementById('editor').classList.remove('hidden');
   document.getElementById('titleInput').value = note.title;
   document.getElementById('editor').innerHTML = note.content;
+  if(!note.tags) note.tags = [];
+  renderTagChipsDisplay(note);
 }
 
 function showWelcome(){
   document.getElementById('titleInput').value = '';
   document.getElementById('titleInput').classList.add('hidden');
   document.getElementById('toolbarRow').classList.add('hidden');
+  document.getElementById('tagsRow').classList.add('hidden');
+  document.getElementById('exportMenu').classList.add('hidden');
   document.getElementById('editor').classList.add('hidden');
   document.getElementById('editor').innerHTML = '';
   document.getElementById('welcome').classList.remove('hidden');
+}
+
+/* ---------- Tags on the open note ---------- */
+function renderTagChipsDisplay(note){
+  const el = document.getElementById('tagChipsDisplay');
+  el.innerHTML = (note.tags||[]).map(t => `<span class="tag-chip">${escapeHtml(t)} <span style="cursor:pointer" onclick="removeTag('${escapeHtml(t)}')">×</span></span>`).join('');
+}
+function handleTagInput(ev){
+  if(ev.key !== 'Enter') return;
+  ev.preventDefault();
+  const input = ev.target;
+  const val = input.value.trim().replace(/,/g,'');
+  if(!val) return;
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  if(!note.tags) note.tags = [];
+  if(!note.tags.includes(val)) note.tags.push(val);
+  input.value = '';
+  renderTagChipsDisplay(note);
+  note.updated = Date.now();
+  renderList();
+  renderTagFilterRow();
+  persist();
+}
+function removeTag(tag){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  note.tags = (note.tags||[]).filter(t => t !== tag);
+  renderTagChipsDisplay(note);
+  renderList();
+  renderTagFilterRow();
+  persist();
+}
+function renderTagFilterRow(){
+  const all = new Set();
+  notes.forEach(n => (n.tags||[]).forEach(t => all.add(t)));
+  const row = document.getElementById('tagFilterRow');
+  if(all.size === 0){ row.innerHTML = ''; return; }
+  row.innerHTML = [...all].sort().map(t => `
+    <button class="tag-filter-chip ${activeTagFilter===t?'active':''}" onclick="toggleTagFilter('${escapeHtml(t)}')">${escapeHtml(t)}</button>
+  `).join('');
+}
+function toggleTagFilter(tag){
+  activeTagFilter = activeTagFilter === tag ? null : tag;
+  renderTagFilterRow();
+  renderList();
 }
 
 function scheduleSave(){
@@ -478,13 +622,18 @@ function scheduleSave(){
 function renderList(){
   const listEl = document.getElementById('noteList');
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  const sorted = [...notes].sort((a,b) => b.updated - a.updated);
+  let sorted = [...notes].sort((a,b) => b.updated - a.updated);
+  if(activeTagFilter) sorted = sorted.filter(n => (n.tags||[]).includes(activeTagFilter));
   const filtered = q ? sorted.filter(n =>
-    (n.title||'').toLowerCase().includes(q) || stripHtml(n.content).toLowerCase().includes(q)
+    (n.title||'').toLowerCase().includes(q) ||
+    stripHtml(n.content).toLowerCase().includes(q) ||
+    (n.tags||[]).some(t => t.toLowerCase().includes(q))
   ) : sorted;
 
+  renderTagFilterRow();
+
   if(filtered.length === 0){
-    listEl.innerHTML = '<div class="empty-list">Inga anteckningar än.<br>Klicka på "+ Ny anteckning" för att börja.</div>';
+    listEl.innerHTML = '<div class="empty-list">Inga anteckningar matchar.<br>Klicka på "+ Ny anteckning" för att börja.</div>';
     return;
   }
 
@@ -492,6 +641,7 @@ function renderList(){
     <div class="note-item ${n.id===activeNoteId?'active':''}" onclick="selectNote('${n.id}')">
       <h4>${escapeHtml(n.title) || 'Namnlös anteckning'}</h4>
       <p>${escapeHtml(stripHtml(n.content).slice(0,80))}</p>
+      ${(n.tags&&n.tags.length) ? `<div class="note-tags">${n.tags.map(t=>`<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
       <time>${new Date(n.updated).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</time>
     </div>
   `).join('');
@@ -547,6 +697,107 @@ function insertImage(ev){
 }
 
 /* ============================================================
+   Per-note export: Markdown & PDF
+============================================================ */
+function toggleExportMenu(){
+  document.getElementById('exportDropdown').classList.toggle('hidden');
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('exportMenu');
+  if(menu && !menu.contains(e.target)){
+    document.getElementById('exportDropdown').classList.add('hidden');
+  }
+});
+
+function htmlToMarkdown(node){
+  let out = '';
+  node.childNodes.forEach(child => {
+    if(child.nodeType === Node.TEXT_NODE){
+      out += child.textContent;
+      return;
+    }
+    if(child.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = child.tagName.toLowerCase();
+    const inner = () => htmlToMarkdown(child);
+    switch(tag){
+      case 'strong': case 'b': out += `**${inner()}**`; break;
+      case 'em': case 'i': out += `*${inner()}*`; break;
+      case 'u': out += `<u>${inner()}</u>`; break;
+      case 'a': out += `[${inner()}](${child.getAttribute('href')||''})`; break;
+      case 'br': out += '\n'; break;
+      case 'h1': out += `\n# ${inner()}\n`; break;
+      case 'h2': out += `\n## ${inner()}\n`; break;
+      case 'h3': out += `\n### ${inner()}\n`; break;
+      case 'p': case 'div': out += `\n${inner()}\n`; break;
+      case 'ul':
+        child.querySelectorAll(':scope > li').forEach(li => { out += `- ${htmlToMarkdown(li)}\n`; });
+        out += '\n';
+        break;
+      case 'ol':
+        [...child.querySelectorAll(':scope > li')].forEach((li,i) => { out += `${i+1}. ${htmlToMarkdown(li)}\n`; });
+        out += '\n';
+        break;
+      case 'img': out += `\n![${child.getAttribute('alt')||'bild'}](${child.getAttribute('src')})\n`; break;
+      case 'table': {
+        const rows = [...child.querySelectorAll('tr')];
+        rows.forEach((tr, i) => {
+          const cells = [...tr.children].map(td => htmlToMarkdown(td).trim().replace(/\n/g,' ') || ' ');
+          out += `| ${cells.join(' | ')} |\n`;
+          if(i === 0) out += `| ${cells.map(()=>'---').join(' | ')} |\n`;
+        });
+        out += '\n';
+        break;
+      }
+      default: out += inner();
+    }
+  });
+  return out;
+}
+
+function exportNoteMarkdown(){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  const container = document.createElement('div');
+  container.innerHTML = note.content;
+  const body = htmlToMarkdown(container).replace(/\n{3,}/g, '\n\n').trim();
+  const tagLine = (note.tags && note.tags.length) ? `\n\n_Taggar: ${note.tags.join(', ')}_` : '';
+  const md = `# ${note.title || 'Namnlös anteckning'}\n\n${body}${tagLine}\n`;
+  const blob = new Blob([md], {type:'text/markdown'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(note.title || 'anteckning').replace(/[^a-z0-9åäöÅÄÖ\- ]/gi,'').trim() || 'anteckning'}.md`;
+  a.click();
+  document.getElementById('exportDropdown').classList.add('hidden');
+}
+
+function exportNotePdf(){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  const tagsHtml = (note.tags && note.tags.length)
+    ? `<p style="font-family:monospace;font-size:12px;color:#8a7c5c;">Taggar: ${note.tags.map(escapeHtml).join(', ')}</p>` : '';
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
+    <title>${escapeHtml(note.title || 'Anteckning')}</title>
+    <style>
+      body{ font-family: Georgia, serif; max-width:700px; margin:40px auto; padding:0 20px; color:#232019; line-height:1.6; }
+      h1{ font-size:26px; margin-bottom:4px; }
+      img{ max-width:100%; }
+      table{ border-collapse:collapse; width:100%; }
+      td, th{ border:1px solid #999; padding:6px 10px; }
+    </style></head>
+    <body>
+      <h1>${escapeHtml(note.title || 'Namnlös anteckning')}</h1>
+      ${tagsHtml}
+      <div>${note.content}</div>
+      <script>window.onload = () => window.print();<\/script>
+    </body></html>
+  `);
+  win.document.close();
+  document.getElementById('exportDropdown').classList.add('hidden');
+}
+
+/* ============================================================
    Export / import (encrypted blob, portable across devices)
 ============================================================ */
 function exportData(){
@@ -588,4 +839,4 @@ function importData(ev){
 }
 </script>
 </body>
-</html>.
+</html>
