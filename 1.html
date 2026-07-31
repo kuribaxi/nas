@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anteckningsboken</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#151b24;
+    --ink-2:#1f2733;
+    --paper:#efe6d2;
+    --paper-2:#e4d8bd;
+    --brass:#b8894f;
+    --brass-light:#d8ab74;
+    --teal:#3a6b65;
+    --danger:#b1503f;
+    --text-on-ink:#e9e2d0;
+    --text-on-paper:#232019;
+    --muted:#8b93a1;
+    --radius:2px;
+    --font-display:'Fraunces', serif;
+    --font-body:'Inter', sans-serif;
+    --font-mono:'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at top left, #202b3a 0%, transparent 55%),
+      var(--ink);
+    color:var(--text-on-ink);
+    font-family:var(--font-body);
+    min-height:100vh;
+  }
+  ::selection{ background:var(--brass); color:var(--ink); }
+  button{ font-family:inherit; cursor:pointer; }
+  input, textarea{ font-family:inherit; }
+  :focus-visible{ outline:2px solid var(--brass-light); outline-offset:2px; }
+
+  /* ---------- Layout scaffolds ---------- */
+  .screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .hidden{ display:none !important; }
+
+  /* ---------- Login / setup ---------- */
+  .seal{
+    width:64px; height:64px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--brass-light), var(--brass) 60%, #8a6236 100%);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 22px auto;
+    box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 2px 4px rgba(255,255,255,.25);
+  }
+  .seal svg{ width:28px; height:28px; }
+  .auth-card{
+    width:100%; max-width:380px;
+    background:var(--ink-2);
+    border:1px solid #2c3646;
+    border-radius:var(--radius);
+    padding:40px 36px;
+    text-align:center;
+    animation:fadein .5s ease;
+  }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+  .auth-card h1{
+    font-family:var(--font-display); font-weight:600; font-style:italic;
+    font-size:28px; margin:0 0 6px 0; letter-spacing:.3px;
+  }
+  .auth-card p.eyebrow{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--brass-light); margin:0 0 26px 0;
+  }
+  .field{ text-align:left; margin-bottom:16px; }
+  .field label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-family:var(--font-mono); }
+  .field input{
+    width:100%; padding:11px 12px; border-radius:var(--radius);
+    border:1px solid #3a4557; background:#131922; color:var(--text-on-ink);
+    font-size:14px;
+  }
+  .btn{
+    width:100%; padding:12px; border:none; border-radius:var(--radius);
+    background:var(--brass); color:#1b1204; font-weight:600; font-size:14px;
+    letter-spacing:.02em; transition:background .15s ease, transform .1s ease;
+  }
+  .btn:hover{ background:var(--brass-light); }
+  .btn:active{ transform:scale(.98); }
+  .btn.secondary{ background:transparent; border:1px solid #3a4557; color:var(--text-on-ink); }
+  .btn.secondary:hover{ background:#1a212c; }
+  .btn.danger{ background:var(--danger); color:#fff; }
+  .switch-mode{ margin-top:18px; font-size:13px; color:var(--muted); }
+  .switch-mode a{ color:var(--brass-light); text-decoration:none; cursor:pointer; }
+  .auth-error{ color:#e2897a; font-size:13px; margin:-6px 0 14px 0; min-height:1em; font-family:var(--font-mono); }
+  .auth-note{ font-size:11.5px; color:var(--muted); margin-top:22px; line-height:1.5; }
+
+  /* ---------- App shell ---------- */
+  .app{ display:none; height:100vh; }
+  .app.active{ display:flex; }
+  .sidebar{
+    width:290px; flex:none; background:var(--ink-2); border-right:1px solid #2c3646;
+    display:flex; flex-direction:column;
+  }
+  .sidebar-head{ padding:20px 18px 14px 18px; border-bottom:1px solid #2c3646; }
+  .brand{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--brass); }
+  .brand span{ font-family:var(--font-display); font-style:italic; font-size:19px; }
+  .search{
+    width:100%; padding:9px 10px; border-radius:var(--radius); border:1px solid #3a4557;
+    background:#131922; color:var(--text-on-ink); font-size:13px;
+  }
+  .new-note-btn{
+    margin:14px 18px; padding:10px; border-radius:var(--radius); border:1px dashed #4a5568;
+    background:transparent; color:var(--brass-light); font-size:13px; font-family:var(--font-mono);
+    letter-spacing:.03em;
+  }
+  .new-note-btn:hover{ background:#1a212c; border-color:var(--brass); }
+  .note-list{ flex:1; overflow-y:auto; padding:0 10px 10px 10px; }
+  .note-item{
+    padding:12px 12px; margin-bottom:6px; border-radius:var(--radius); cursor:pointer;
+    border:1px solid transparent; position:relative;
+  }
+  .note-item:hover{ background:#1a212c; }
+  .note-item.active{ background:#232d3c; border-color:var(--brass); }
+  .note-item h4{ margin:0 0 4px 0; font-size:13.5px; font-weight:600; color:var(--text-on-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .note-item p{ margin:0; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .note-item time{ display:block; font-family:var(--font-mono); font-size:9.5px; color:#5c6577; margin-top:6px; letter-spacing:.03em; }
+  .empty-list{ padding:26px 14px; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.6; }
+
+  .sidebar-foot{ padding:14px 18px; border-top:1px solid #2c3646; display:flex; gap:8px; }
+  .icon-btn{
+    flex:1; padding:9px; border-radius:var(--radius); border:1px solid #3a4557; background:#131922;
+    color:var(--muted); font-size:11.5px; font-family:var(--font-mono);
+  }
+  .icon-btn:hover{ color:var(--text-on-ink); border-color:var(--brass); }
+
+  .main{ flex:1; display:flex; flex-direction:column; background:var(--paper); color:var(--text-on-paper); min-width:0; }
+  .main-topbar{
+    padding:16px 34px; border-bottom:1px solid var(--paper-2); display:flex; align-items:center; gap:14px;
+  }
+  .title-input{
+    flex:1; border:none; background:transparent; font-family:var(--font-display); font-style:italic;
+    font-size:26px; color:var(--text-on-paper); font-weight:600;
+  }
+  .title-input::placeholder{ color:#a89a7c; }
+  .save-status{ font-family:var(--font-mono); font-size:10.5px; color:#8a7c5c; letter-spacing:.03em; white-space:nowrap; }
+
+  .toolbar{
+    display:flex; flex-wrap:wrap; gap:4px; padding:10px 34px; border-bottom:1px solid var(--paper-2);
+    background:#e9dfc7;
+  }
+  .toolbar button{
+    padding:7px 11px; border:1px solid transparent; border-radius:var(--radius); background:transparent;
+    color:var(--text-on-paper); font-size:13px; font-family:var(--font-mono);
+  }
+  .toolbar button:hover{ background:var(--paper-2); }
+  .toolbar .sep{ width:1px; background:#cbbd9a; margin:4px 6px; }
+
+  .editor-wrap{ flex:1; overflow-y:auto; padding:26px 34px 60px 34px; }
+  .editor{
+    max-width:760px; min-height:100%; outline:none; font-size:15.5px; line-height:1.75;
+  }
+  .editor a{ color:var(--teal); }
+  .editor table{ border-collapse:collapse; margin:14px 0; width:100%; }
+  .editor td, .editor th{ border:1px solid #b9ab88; padding:7px 10px; font-size:14px; vertical-align:top; }
+  .editor th{ background:var(--paper-2); }
+  .editor img{ max-width:100%; border-radius:2px; margin:10px 0; display:block; }
+  .editor:empty:before{ content:attr(data-placeholder); color:#a89a7c; }
+
+  .welcome{ max-width:520px; margin:60px auto; text-align:center; color:#8a7c5c; }
+  .welcome h2{ font-family:var(--font-display); font-style:italic; font-size:24px; color:var(--text-on-paper); margin-bottom:10px; }
+
+  /* Modal */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(10,13,18,.6); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal{ background:var(--ink-2); border:1px solid #2c3646; border-radius:var(--radius); padding:28px; width:100%; max-width:360px; }
+  .modal h3{ font-family:var(--font-display); font-style:italic; margin:0 0 16px 0; font-size:19px; }
+  .modal .btn-row{ display:flex; gap:8px; margin-top:20px; }
+
+  @media (max-width: 760px){
+    .sidebar{ position:fixed; z-index:30; height:100%; transform:translateX(-100%); transition:transform .2s ease; }
+    .sidebar.open{ transform:none; }
+    .main-topbar{ padding:14px 16px; }
+    .toolbar{ padding:8px 12px; }
+    .editor-wrap{ padding:18px 16px 50px 16px; }
+    .menu-toggle{ display:inline-flex !important; }
+  }
+  .menu-toggle{ display:none; background:transparent; border:1px solid #cbbd9a; border-radius:var(--radius); padding:8px 10px; color:var(--text-on-paper); }
+</style>
+</head>
+<body>
+
+<!-- ===================== AUTH SCREEN ===================== -->
+<div class="screen" id="authScreen">
+  <div class="auth-card">
+    <div class="seal">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" stroke="#1b1204" stroke-width="1.4" fill="none"/><path d="M9 12l2 2 4-4" stroke="#1b1204" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1 id="authTitle">Lås upp boken</h1>
+    <p class="eyebrow" id="authEyebrow">Privat anteckningsbok</p>
+
+    <div id="loginForm">
+      <div class="field">
+        <label for="loginPass">Lösenord</label>
+        <input type="password" id="loginPass" autocomplete="current-password">
+      </div>
+      <div class="auth-error" id="loginError"></div>
+      <button class="btn" onclick="handleLogin()">Lås upp</button>
+      <p class="switch-mode">Glömt lösenord? <a onclick="showReset()">Nollställ boken</a></p>
+    </div>
+
+    <div id="setupForm" class="hidden">
+      <div class="field">
+        <label for="setupPass">Välj ett lösenord</label>
+        <input type="password" id="setupPass" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="setupPass2">Bekräfta lösenord</label>
+        <input type="password" id="setupPass2" autocomplete="new-password">
+      </div>
+      <div class="auth-error" id="setupError"></div>
+      <button class="btn" onclick="handleSetup()">Skapa boken</button>
+    </div>
+
+    <p class="auth-note">Anteckningarna krypteras i din webbläsare (AES-GCM) med en nyckel som härleds från lösenordet. Lösenordet skickas aldrig någonstans och lagras inte i klartext — glöms det bort finns ingen återställning.</p>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand"><span class="dot"></span><span>Anteckningsboken</span></div>
+      <input class="search" id="searchInput" type="text" placeholder="Sök anteckningar…" oninput="renderList()">
+    </div>
+    <button class="new-note-btn" onclick="createNote()">+ Ny anteckning</button>
+    <div class="note-list" id="noteList"></div>
+    <div class="sidebar-foot">
+      <button class="icon-btn" onclick="exportData()">Exportera</button>
+      <button class="icon-btn" onclick="triggerImport()">Importera</button>
+      <button class="icon-btn" onclick="lockApp()">Lås</button>
+    </div>
+    <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
+  </aside>
+
+  <main class="main">
+    <div class="main-topbar">
+      <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      <input class="title-input" id="titleInput" placeholder="Titel…" oninput="scheduleSave()">
+      <span class="save-status" id="saveStatus"></span>
+    </div>
+    <div class="toolbar" id="toolbarRow">
+      <button onclick="fmt('bold')"><b>B</b></button>
+      <button onclick="fmt('italic')"><i>I</i></button>
+      <button onclick="fmt('underline')"><u>U</u></button>
+      <div class="sep"></div>
+      <button onclick="fmt('formatBlock','H2')">Rubrik</button>
+      <button onclick="fmt('insertUnorderedList')">• Lista</button>
+      <button onclick="fmt('insertOrderedList')">1. Lista</button>
+      <div class="sep"></div>
+      <button onclick="insertLink()">🔗 Länk</button>
+      <button onclick="insertTable()">▦ Tabell</button>
+      <button onclick="document.getElementById('imageInput').click()">🖼 Bild</button>
+      <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="insertImage(event)">
+    </div>
+    <div class="editor-wrap">
+      <div class="editor" id="editor" contenteditable="true" data-placeholder="Skriv din anteckning här…" oninput="scheduleSave()"></div>
+      <div class="welcome hidden" id="welcome">
+        <h2>Välj eller skapa en anteckning</h2>
+        <p>Allt du skriver sparas krypterat, lokalt i den här webbläsaren.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   Storage keys
+============================================================ */
+const K_SALT = 'nb_salt';
+const K_CHECK = 'nb_check';   // encrypted verification token
+const K_BLOB  = 'nb_blob';    // encrypted notes payload
+
+let cryptoKey = null;         // in-memory only
+let notes = [];               // decrypted notes array, in memory only
+let activeNoteId = null;
+let saveTimer = null;
+
+/* ============================================================
+   Crypto helpers (WebCrypto: PBKDF2 -> AES-GCM)
+============================================================ */
+function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64ToBuf(b64){ const bin = atob(b64); const arr = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr.buffer; }
+
+async function deriveKey(password, saltB64){
+  const enc = new TextEncoder();
+  const salt = b64ToBuf(saltB64);
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations: 150000, hash:'SHA-256' },
+    baseKey,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+async function encryptString(key, str){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, enc.encode(str));
+  return bufToB64(iv) + '.' + bufToB64(ct);
+}
+async function decryptString(key, payload){
+  const [ivB64, ctB64] = payload.split('.');
+  const iv = new Uint8Array(b64ToBuf(ivB64));
+  const ct = b64ToBuf(ctB64);
+  const dec = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+  return new TextDecoder().decode(dec);
+}
+
+/* ============================================================
+   Auth flow
+============================================================ */
+function isSetUp(){ return !!localStorage.getItem(K_SALT); }
+
+window.addEventListener('DOMContentLoaded', () => {
+  if(isSetUp()){
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.getElementById('setupForm').classList.add('hidden');
+    document.getElementById('authTitle').textContent = 'Lås upp boken';
+  } else {
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('setupForm').classList.remove('hidden');
+    document.getElementById('authTitle').textContent = 'Skapa din bok';
+  }
+});
+
+async function handleSetup(){
+  const p1 = document.getElementById('setupPass').value;
+  const p2 = document.getElementById('setupPass2').value;
+  const errEl = document.getElementById('setupError');
+  errEl.textContent = '';
+  if(p1.length < 4){ errEl.textContent = 'Använd minst 4 tecken.'; return; }
+  if(p1 !== p2){ errEl.textContent = 'Lösenorden matchar inte.'; return; }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltB64 = bufToB64(salt.buffer);
+  localStorage.setItem(K_SALT, saltB64);
+  const key = await deriveKey(p1, saltB64);
+  const check = await encryptString(key, 'unlock-ok');
+  localStorage.setItem(K_CHECK, check);
+  const blob = await encryptString(key, JSON.stringify([]));
+  localStorage.setItem(K_BLOB, blob);
+
+  cryptoKey = key;
+  notes = [];
+  enterApp();
+}
+
+async function handleLogin(){
+  const p = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  const saltB64 = localStorage.getItem(K_SALT);
+  try{
+    const key = await deriveKey(p, saltB64);
+    const checkPayload = localStorage.getItem(K_CHECK);
+    const result = await decryptString(key, checkPayload);
+    if(result !== 'unlock-ok') throw new Error('mismatch');
+    cryptoKey = key;
+    const blobPayload = localStorage.getItem(K_BLOB);
+    const json = await decryptString(key, blobPayload);
+    notes = JSON.parse(json);
+    document.getElementById('loginPass').value = '';
+    enterApp();
+  }catch(e){
+    errEl.textContent = 'Fel lösenord.';
+  }
+}
+
+function showReset(){
+  if(confirm('Detta raderar ALLA anteckningar permanent på den här enheten. Fortsätt?')){
+    localStorage.removeItem(K_SALT);
+    localStorage.removeItem(K_CHECK);
+    localStorage.removeItem(K_BLOB);
+    location.reload();
+  }
+}
+
+function lockApp(){
+  cryptoKey = null;
+  notes = [];
+  activeNoteId = null;
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('loginForm').classList.remove('hidden');
+  document.getElementById('setupForm').classList.add('hidden');
+  document.getElementById('authTitle').textContent = 'Lås upp boken';
+}
+
+function enterApp(){
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('app').classList.add('active');
+  renderList();
+  showWelcome();
+}
+
+/* ============================================================
+   Notes CRUD (all in-memory, persisted via encrypted blob)
+============================================================ */
+async function persist(){
+  const json = JSON.stringify(notes);
+  const blob = await encryptString(cryptoKey, json);
+  localStorage.setItem(K_BLOB, blob);
+  const el = document.getElementById('saveStatus');
+  el.textContent = 'Sparat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+}
+
+function createNote(){
+  const note = { id: crypto.randomUUID(), title:'', content:'', updated: Date.now() };
+  notes.unshift(note);
+  activeNoteId = note.id;
+  renderList();
+  loadNoteIntoEditor(note);
+  persist();
+  document.getElementById('titleInput').focus();
+}
+
+function deleteNote(id, ev){
+  ev.stopPropagation();
+  if(!confirm('Radera den här anteckningen?')) return;
+  notes = notes.filter(n => n.id !== id);
+  if(activeNoteId === id){ activeNoteId = null; showWelcome(); }
+  renderList();
+  persist();
+}
+
+function selectNote(id){
+  const note = notes.find(n => n.id === id);
+  if(!note) return;
+  activeNoteId = id;
+  renderList();
+  loadNoteIntoEditor(note);
+}
+
+function loadNoteIntoEditor(note){
+  document.getElementById('welcome').classList.add('hidden');
+  document.getElementById('titleInput').classList.remove('hidden');
+  document.getElementById('toolbarRow').classList.remove('hidden');
+  document.getElementById('editor').classList.remove('hidden');
+  document.getElementById('titleInput').value = note.title;
+  document.getElementById('editor').innerHTML = note.content;
+}
+
+function showWelcome(){
+  document.getElementById('titleInput').value = '';
+  document.getElementById('titleInput').classList.add('hidden');
+  document.getElementById('toolbarRow').classList.add('hidden');
+  document.getElementById('editor').classList.add('hidden');
+  document.getElementById('editor').innerHTML = '';
+  document.getElementById('welcome').classList.remove('hidden');
+}
+
+function scheduleSave(){
+  if(!activeNoteId) return;
+  clearTimeout(saveTimer);
+  document.getElementById('saveStatus').textContent = 'Skriver…';
+  saveTimer = setTimeout(async () => {
+    const note = notes.find(n => n.id === activeNoteId);
+    if(!note) return;
+    note.title = document.getElementById('titleInput').value;
+    note.content = document.getElementById('editor').innerHTML;
+    note.updated = Date.now();
+    renderList();
+    await persist();
+  }, 700);
+}
+
+function renderList(){
+  const listEl = document.getElementById('noteList');
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const sorted = [...notes].sort((a,b) => b.updated - a.updated);
+  const filtered = q ? sorted.filter(n =>
+    (n.title||'').toLowerCase().includes(q) || stripHtml(n.content).toLowerCase().includes(q)
+  ) : sorted;
+
+  if(filtered.length === 0){
+    listEl.innerHTML = '<div class="empty-list">Inga anteckningar än.<br>Klicka på "+ Ny anteckning" för att börja.</div>';
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(n => `
+    <div class="note-item ${n.id===activeNoteId?'active':''}" onclick="selectNote('${n.id}')">
+      <h4>${escapeHtml(n.title) || 'Namnlös anteckning'}</h4>
+      <p>${escapeHtml(stripHtml(n.content).slice(0,80))}</p>
+      <time>${new Date(n.updated).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</time>
+    </div>
+  `).join('');
+}
+
+function stripHtml(html){ const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; }
+function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+/* ============================================================
+   Editor toolbar actions
+============================================================ */
+function fmt(cmd, val){
+  document.getElementById('editor').focus();
+  document.execCommand(cmd, false, val || null);
+  scheduleSave();
+}
+
+function insertLink(){
+  const url = prompt('Länk (URL):', 'https://');
+  if(!url) return;
+  document.getElementById('editor').focus();
+  document.execCommand('createLink', false, url);
+  scheduleSave();
+}
+
+function insertTable(){
+  const rows = parseInt(prompt('Antal rader:', '3'), 10);
+  const cols = parseInt(prompt('Antal kolumner:', '3'), 10);
+  if(!rows || !cols) return;
+  let html = '<table>';
+  for(let r=0; r<rows; r++){
+    html += '<tr>';
+    for(let c=0; c<cols; c++){ html += '<td>&nbsp;</td>'; }
+    html += '</tr>';
+  }
+  html += '</table><p><br></p>';
+  document.getElementById('editor').focus();
+  document.execCommand('insertHTML', false, html);
+  scheduleSave();
+}
+
+function insertImage(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('editor').focus();
+    document.execCommand('insertHTML', false, `<img src="${reader.result}">`);
+    scheduleSave();
+  };
+  reader.readAsDataURL(file);
+  ev.target.value = '';
+}
+
+/* ============================================================
+   Export / import (encrypted blob, portable across devices)
+============================================================ */
+function exportData(){
+  const payload = {
+    salt: localStorage.getItem(K_SALT),
+    check: localStorage.getItem(K_CHECK),
+    blob: localStorage.getItem(K_BLOB),
+    exported: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'anteckningsboken-backup.json';
+  a.click();
+}
+
+function triggerImport(){ document.getElementById('importFile').click(); }
+
+function importData(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const payload = JSON.parse(reader.result);
+      if(!payload.salt || !payload.check || !payload.blob) throw new Error('bad file');
+      if(!confirm('Detta ersätter dina nuvarande anteckningar på den här enheten med innehållet i filen. Fortsätt?')) return;
+      localStorage.setItem(K_SALT, payload.salt);
+      localStorage.setItem(K_CHECK, payload.check);
+      localStorage.setItem(K_BLOB, payload.blob);
+      alert('Importerat. Boken laddas om — lås upp med lösenordet som hörde till backupen.');
+      location.reload();
+    }catch(e){
+      alert('Kunde inte läsa filen. Är det en giltig backup-fil?');
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+</script>
+</body>
+</html>.
