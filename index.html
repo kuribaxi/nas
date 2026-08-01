@@ -244,6 +244,7 @@
   }
   .editor{
     max-width:760px; min-height:100%; outline:none; font-size:15.5px; line-height:30px;
+    -webkit-user-select:text; user-select:text; cursor:text;
   }
   .editor a{ color:var(--teal); cursor:pointer; }
   .editor table{ border-collapse:collapse; margin:14px 0; width:100%; }
@@ -470,6 +471,7 @@
   <aside class="sidebar" id="sidebar">
     <div class="icon-row">
       <button class="icon-round" onclick="createNote()" title="Ny anteckning">✎</button>
+      <button class="icon-round" onclick="openReader()" title="Öppna i läsläge">📖</button>
       <button class="icon-round" onclick="manualSave()" title="Spara nu">💾</button>
       <button class="icon-round" onclick="event.stopPropagation(); document.getElementById('exportDropdown').classList.toggle('hidden')" title="Exportera anteckning">✉</button>
       <button class="icon-round" onclick="toggleSearchBar()" title="Sök">🔍</button>
@@ -490,8 +492,6 @@
     <div class="main-topbar">
       <button class="menu-toggle" onclick="toggleSidebar()" title="Visa/göm anteckningslistan">☰</button>
       <input class="title-input" id="titleInput" placeholder="Titel…" oninput="scheduleSave()">
-      <button class="icon-btn-small reader-btn" onclick="openReader()" title="Öppna i läsläge">👓 Läsare</button>
-      <button class="reader-btn" onclick="openReader()" title="Öppna i läsläge">📖 Läsare</button>
       <div class="export-menu" id="exportMenu">
         <div class="export-dropdown hidden" id="exportDropdown">
           <button onclick="exportNoteMarkdown()">Som Markdown (.md)</button>
@@ -512,7 +512,7 @@
       <button class="icon-btn-small" onclick="resetNoteColors()" title="Återställ färger">↺</button>
     </div>
     <div class="toolbar" id="toolbarRow">
-      <select id="fontFamilySelect" onchange="setFontFamily(this.value)" title="Typsnitt">
+      <select id="fontFamilySelect" onchange="setFontFamily(this.value)" onmousedown="saveEditorSelection()" title="Typsnitt">
         <option value="Inter, sans-serif">Standard</option>
         <option value="'Fraunces', serif">Rubrik-serif</option>
         <option value="'Merriweather', serif">Läsvänlig serif</option>
@@ -522,7 +522,7 @@
         <option value="'Courier New', monospace">Skrivmaskin</option>
         <option value="'Caveat', cursive">Handstil</option>
       </select>
-      <select id="fontSizeSelect" onchange="setFontSize(this.value)" title="Textstorlek">
+      <select id="fontSizeSelect" onchange="setFontSize(this.value)" onmousedown="saveEditorSelection()" title="Textstorlek">
         <option value="12">12</option>
         <option value="14">14</option>
         <option value="16" selected>16</option>
@@ -533,7 +533,7 @@
         <option value="32">32</option>
         <option value="40">40</option>
       </select>
-      <input type="color" id="fontColorPicker" value="#2e2a1f" onchange="setFontColor(this.value)" title="Textfärg">
+      <input type="color" id="fontColorPicker" value="#2e2a1f" onchange="setFontColor(this.value)" onmousedown="saveEditorSelection()" title="Textfärg">
       <div class="sep"></div>
       <button onclick="fmt('undo')" title="Ångra (Ctrl+Z)">↶ Ångra</button>
       <button onclick="fmt('redo')" title="Gör om (Ctrl+Y)">↷ Gör om</button>
@@ -1412,6 +1412,7 @@ function scheduleSave(){
   clearTimeout(saveTimer);
   document.getElementById('saveStatus').textContent = 'Skriver…';
   saveTimer = setTimeout(async () => {
+    ensureTrailingParagraph();
     renderList();
     await persist();
   }, 500);
@@ -1492,6 +1493,8 @@ function escapeHtml(str){ const d = document.createElement('div'); d.textContent
 document.getElementById('editor').addEventListener('click', (e) => {
   const link = e.target.closest('a');
   if(link){
+    const sel = window.getSelection();
+    if(sel && sel.toString().length > 0) return; // the person was dragging to select text, not clicking the link
     e.preventDefault();
     window.open(link.getAttribute('href'), '_blank', 'noopener');
   }
@@ -1558,21 +1561,43 @@ function fmt(cmd, val){
   scheduleSave();
 }
 
+// Native color pickers (and to a lesser extent <select> dropdowns) steal
+// focus from the contenteditable editor as soon as you interact with them,
+// which silently collapses/loses whatever text was selected. We save the
+// exact selection on mousedown (just before focus moves away) and restore
+// it right before applying the formatting command.
+let savedEditorSelection = null;
+function saveEditorSelection(){
+  const editor = document.getElementById('editor');
+  const sel = window.getSelection();
+  if(sel.rangeCount > 0 && editor.contains(sel.anchorNode)){
+    savedEditorSelection = sel.getRangeAt(0).cloneRange();
+  }
+}
+function restoreEditorSelection(){
+  const editor = document.getElementById('editor');
+  editor.focus();
+  if(savedEditorSelection){
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedEditorSelection);
+  }
+}
+
 function setFontFamily(family){
-  document.getElementById('editor').focus();
+  restoreEditorSelection();
   document.execCommand('styleWithCSS', false, true);
   document.execCommand('fontName', false, family);
   scheduleSave();
 }
 
 function setFontSize(px){
-  const editor = document.getElementById('editor');
-  editor.focus();
+  restoreEditorSelection();
   // execCommand only supports relative sizes 1-7, so use it as a marker
   // then swap the inserted <font size="7"> tags for real pixel sizing.
   document.execCommand('styleWithCSS', false, false);
   document.execCommand('fontSize', false, '7');
-  editor.querySelectorAll('font[size="7"]').forEach(f => {
+  document.getElementById('editor').querySelectorAll('font[size="7"]').forEach(f => {
     f.removeAttribute('size');
     f.style.fontSize = px + 'px';
   });
@@ -1580,10 +1605,23 @@ function setFontSize(px){
 }
 
 function setFontColor(color){
-  document.getElementById('editor').focus();
+  restoreEditorSelection();
   document.execCommand('styleWithCSS', false, true);
   document.execCommand('foreColor', false, color);
   scheduleSave();
+}
+
+// A table with nothing after it leaves no clickable line to continue
+// writing on. This guarantees there's always an editable paragraph
+// directly below the last table in the note.
+function ensureTrailingParagraph(){
+  const editor = document.getElementById('editor');
+  const last = editor.lastElementChild;
+  if(last && last.tagName === 'TABLE'){
+    const p = document.createElement('p');
+    p.innerHTML = '<br>';
+    editor.appendChild(p);
+  }
 }
 
 function makeTableFullWidth(){
@@ -1628,6 +1666,7 @@ function insertTable(){
   html += '</table><p><br></p>';
   document.getElementById('editor').focus();
   document.execCommand('insertHTML', false, html);
+  ensureTrailingParagraph();
   scheduleSave();
 }
 
