@@ -470,6 +470,24 @@
   </main>
 </div>
 
+<div class="modal-overlay hidden" id="deleteProfileModal">
+  <div class="modal">
+    <h3>Radera "<span id="deleteProfileName"></span>"?</h3>
+    <p style="font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 16px 0;">
+      Detta tar bort boken och alla dess anteckningar permanent från den här enheten. Skriv lösenordet för att bekräfta.
+    </p>
+    <div class="field">
+      <label for="deleteProfilePass">Lösenord</label>
+      <input type="password" id="deleteProfilePass" autocomplete="current-password" onkeydown="if(event.key==='Enter') confirmDeleteProfile();">
+    </div>
+    <div class="auth-error" id="deleteProfileError"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeDeleteProfileModal()">Avbryt</button>
+      <button class="btn danger" onclick="confirmDeleteProfile()">Radera för alltid</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    Storage keys — scoped per profile so several "books" can
@@ -706,8 +724,34 @@ function showReset(){
 
 function deleteCurrentProfile(){
   if(!currentProfileId) return;
+  document.getElementById('settingsDropdown').classList.add('hidden');
   const profile = getProfiles().find(x => x.id === currentProfileId);
-  if(!confirm('Radera boken "' + (profile ? profile.name : '') + '" och ALLA dess anteckningar permanent? Detta går inte att ångra.')) return;
+  document.getElementById('deleteProfileName').textContent = profile ? profile.name : '';
+  document.getElementById('deleteProfilePass').value = '';
+  document.getElementById('deleteProfileError').textContent = '';
+  document.getElementById('deleteProfileModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('deleteProfilePass').focus(), 50);
+}
+
+function closeDeleteProfileModal(){
+  document.getElementById('deleteProfileModal').classList.add('hidden');
+}
+
+async function confirmDeleteProfile(){
+  const pass = document.getElementById('deleteProfilePass').value;
+  const errEl = document.getElementById('deleteProfileError');
+  errEl.textContent = '';
+  if(!pass){ errEl.textContent = 'Ange lösenordet för att bekräfta.'; return; }
+  try{
+    const saltB64 = localStorage.getItem(saltKey(currentProfileId));
+    const key = await deriveKey(pass, saltB64);
+    const checkPayload = localStorage.getItem(checkKey(currentProfileId));
+    const result = await decryptString(key, checkPayload);
+    if(result !== 'unlock-ok') throw new Error('mismatch');
+  }catch(e){
+    errEl.textContent = 'Fel lösenord — boken raderades inte.';
+    return;
+  }
   localStorage.removeItem(saltKey(currentProfileId));
   localStorage.removeItem(checkKey(currentProfileId));
   localStorage.removeItem(blobKey(currentProfileId));
