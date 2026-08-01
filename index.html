@@ -540,6 +540,71 @@ function saltKey(id){ return 'nb_salt_' + id; }
 function checkKey(id){ return 'nb_check_' + id; }
 function blobKey(id){ return 'nb_blob_' + id; }
 
+/* ------------------------------------------------------------
+   Note content (which can include images) lives in IndexedDB
+   instead of localStorage. localStorage is usually capped at
+   only ~5-10MB total, which a few photos blow straight through.
+   IndexedDB has a far larger quota (typically hundreds of MB+).
+   Salt/check tokens stay in localStorage since they're tiny.
+------------------------------------------------------------ */
+const IDB_NAME = 'anteckningsboken_db';
+const IDB_STORE = 'blobs';
+let idbOpenPromise = null;
+function openIdb(){
+  if(!window.indexedDB) return Promise.reject(new Error('IndexedDB saknas i den här webbläsaren'));
+  if(idbOpenPromise) return idbOpenPromise;
+  idbOpenPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idbOpenPromise;
+}
+async function idbSet(key, value){
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(key){
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbDelete(key){
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+// Reads the note blob, transparently migrating it out of legacy
+// localStorage (where old versions of this app stored it) the first
+// time a profile logs in after this update.
+async function readBlobWithMigration(id){
+  let blob = await idbGet(blobKey(id));
+  if(blob) return blob;
+  const legacy = localStorage.getItem(blobKey(id));
+  if(legacy){
+    blob = legacy;
+    try{
+      await idbSet(blobKey(id), legacy);
+      localStorage.removeItem(blobKey(id));
+    }catch(e){ console.warn('Kunde inte flytta gammal data till IndexedDB, fortsätter ändå.', e); }
+  }
+  return blob;
+}
+
 function getProfiles(){
   try{ return JSON.parse(localStorage.getItem(K_PROFILES)) || []; }
   catch(e){ return []; }
@@ -649,7 +714,16 @@ function undoDelete(){
 /* ============================================================
    Crypto helpers (WebCrypto: PBKDF2 -> AES-GCM)
 ============================================================ */
-function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function bufToB64(buf){
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000; // spreading a whole large array into fromCharCode's
+                            // arguments blows the call stack, so do it in chunks
+  for(let i = 0; i < bytes.length; i += chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 function b64ToBuf(b64){ const bin = atob(b64); const arr = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr.buffer; }
 
 async function deriveKey(password, saltB64){
@@ -759,7 +833,7 @@ async function handleSetup(){
   const check = await encryptString(key, 'unlock-ok');
   localStorage.setItem(checkKey(id), check);
   const blob = await encryptString(key, JSON.stringify([]));
-  localStorage.setItem(blobKey(id), blob);
+  await idbSet(blobKey(id), blob);
 
   const profiles = getProfiles();
   profiles.push({ id, name });
@@ -776,29 +850,39 @@ async function handleLogin(){
   const errEl = document.getElementById('loginError');
   errEl.textContent = '';
   const saltB64 = localStorage.getItem(saltKey(currentProfileId));
+  let key;
   try{
-    const key = await deriveKey(p, saltB64);
+    key = await deriveKey(p, saltB64);
     const checkPayload = localStorage.getItem(checkKey(currentProfileId));
     const result = await decryptString(key, checkPayload);
     if(result !== 'unlock-ok') throw new Error('mismatch');
-    cryptoKey = key;
-    const blobPayload = localStorage.getItem(blobKey(currentProfileId));
-    const json = await decryptString(key, blobPayload);
-    notes = JSON.parse(json);
-    document.getElementById('loginPass').value = '';
-    const profile = getProfiles().find(x => x.id === currentProfileId);
-    enterApp(profile ? profile.name : 'Min bok');
   }catch(e){
     errEl.textContent = 'Fel lösenord.';
+    return;
   }
+  cryptoKey = key;
+  try{
+    const blobPayload = await readBlobWithMigration(currentProfileId);
+    const json = await decryptString(key, blobPayload);
+    notes = JSON.parse(json);
+  }catch(e){
+    console.error('Kunde inte läsa anteckningarna:', e);
+    errEl.textContent = 'Lösenordet stämde, men anteckningarna kunde inte läsas in. Försök igen eller ladda om sidan.';
+    cryptoKey = null;
+    return;
+  }
+  document.getElementById('loginPass').value = '';
+  const profile = getProfiles().find(x => x.id === currentProfileId);
+  enterApp(profile ? profile.name : 'Min bok');
 }
 
-function showReset(){
+async function showReset(){
   if(!currentProfileId) return;
   if(confirm('Detta raderar boken "' + (getProfiles().find(x=>x.id===currentProfileId)||{}).name + '" och alla dess anteckningar permanent på den här enheten. Fortsätt?')){
     localStorage.removeItem(saltKey(currentProfileId));
     localStorage.removeItem(checkKey(currentProfileId));
     localStorage.removeItem(blobKey(currentProfileId));
+    try{ await idbDelete(blobKey(currentProfileId)); }catch(e){}
     saveProfiles(getProfiles().filter(p => p.id !== currentProfileId));
     location.reload();
   }
@@ -837,6 +921,7 @@ async function confirmDeleteProfile(){
   localStorage.removeItem(saltKey(currentProfileId));
   localStorage.removeItem(checkKey(currentProfileId));
   localStorage.removeItem(blobKey(currentProfileId));
+  try{ await idbDelete(blobKey(currentProfileId)); }catch(e){}
   saveProfiles(getProfiles().filter(p => p.id !== currentProfileId));
   location.reload();
 }
@@ -863,7 +948,7 @@ async function persist(){
   try{
     const json = JSON.stringify(notes);
     const blob = await encryptString(cryptoKey, json);
-    localStorage.setItem(blobKey(currentProfileId), blob);
+    await idbSet(blobKey(currentProfileId), blob);
     el.textContent = 'Sparat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
     el.style.color = '';
     return true;
@@ -871,8 +956,8 @@ async function persist(){
     console.error('Kunde inte spara:', err);
     el.textContent = '⚠ Kunde inte spara!';
     el.style.color = '#e2897a';
-    if(err && err.name === 'QuotaExceededError'){
-      alert('Kunde inte spara — webbläsarens lagringsutrymme är fullt. Detta händer ofta om anteckningarna innehåller stora bilder. Ta bort någon bild eller exportera och rensa gamla anteckningar.');
+    if(err && (err.name === 'QuotaExceededError' || err.name === 'QuotaExceededError' /* IndexedDB variant */)){
+      alert('Kunde inte spara — enhetens lagringsutrymme är fullt. Ta bort någon stor bild eller exportera och rensa gamla anteckningar.');
     }
     return false;
   }
@@ -1415,13 +1500,13 @@ function exportNotePdf(){
 /* ============================================================
    Export / import (encrypted blob, portable across devices)
 ============================================================ */
-function exportData(){
+async function exportData(){
   const profile = getProfiles().find(x => x.id === currentProfileId);
   const payload = {
     profileName: profile ? profile.name : 'Min bok',
     salt: localStorage.getItem(saltKey(currentProfileId)),
     check: localStorage.getItem(checkKey(currentProfileId)),
-    blob: localStorage.getItem(blobKey(currentProfileId)),
+    blob: await readBlobWithMigration(currentProfileId),
     exported: new Date().toISOString()
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
@@ -1437,17 +1522,19 @@ function importData(ev){
   const file = ev.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const payload = JSON.parse(reader.result);
       if(!payload.salt || !payload.check || !payload.blob) throw new Error('bad file');
       if(!confirm('Detta ersätter anteckningarna i den öppna boken på den här enheten med innehållet i filen. Fortsätt?')) return;
       localStorage.setItem(saltKey(currentProfileId), payload.salt);
       localStorage.setItem(checkKey(currentProfileId), payload.check);
-      localStorage.setItem(blobKey(currentProfileId), payload.blob);
+      localStorage.removeItem(blobKey(currentProfileId)); // clear any legacy copy
+      await idbSet(blobKey(currentProfileId), payload.blob);
       alert('Importerat. Boken laddas om — lås upp med lösenordet som hörde till backupen.');
       location.reload();
     }catch(e){
+      console.error(e);
       alert('Kunde inte läsa filen. Är det en giltig backup-fil?');
     }
   };
