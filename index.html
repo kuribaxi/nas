@@ -223,6 +223,15 @@
     width:34px; height:32px; padding:2px; border:1px solid #cbbd9a; border-radius:var(--radius);
     background:#fffdf8; cursor:pointer;
   }
+  .zoom-controls{ display:flex; align-items:center; gap:2px; margin-left:auto; }
+  .zoom-controls button{
+    padding:6px 10px; border:1px solid #cbbd9a; border-radius:var(--radius); background:transparent;
+    color:var(--text-on-paper); font-size:13px; font-family:var(--font-mono);
+  }
+  .zoom-controls button:hover{ background:#e2d6b6; }
+  .zoom-controls span{
+    font-family:var(--font-mono); font-size:11.5px; color:var(--text-on-paper); min-width:42px; text-align:center;
+  }
 
   .paper-margin-line{
     position:absolute; top:0; bottom:0; left:70px; width:2px; background:var(--margin-red); opacity:.55; z-index:1;
@@ -235,7 +244,7 @@
   .editor{
     max-width:760px; min-height:100%; outline:none; font-size:15.5px; line-height:30px;
   }
-  .editor a{ color:var(--teal); }
+  .editor a{ color:var(--teal); cursor:pointer; }
   .editor table{ border-collapse:collapse; margin:14px 0; width:100%; }
   .editor td, .editor th{ border:1px solid #b9ab88; padding:7px 10px; font-size:14px; vertical-align:top; line-height:1.5; }
   .editor th{ background:var(--paper-2); }
@@ -459,6 +468,13 @@
       <button onclick="makeTableFullWidth()">⛶ Tabell: fyll sidan</button>
       <button onclick="document.getElementById('imageInput').click()">🖼 Bild</button>
       <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="insertImage(event)">
+      <div class="sep"></div>
+      <div class="zoom-controls">
+        <button onclick="zoomOut()" title="Zooma ut">－</button>
+        <span id="zoomLabel">100%</span>
+        <button onclick="zoomIn()" title="Zooma in">＋</button>
+        <button onclick="zoomReset()" title="Återställ zoom">↺</button>
+      </div>
     </div>
     <div class="editor-wrap">
       <div class="editor" id="editor" contenteditable="true" data-placeholder="Skriv din anteckning här…" oninput="scheduleSave()"></div>
@@ -965,6 +981,33 @@ function escapeHtml(str){ const d = document.createElement('div'); d.textContent
 /* ============================================================
    Editor toolbar actions
 ============================================================ */
+/* ============================================================
+   Links: open on a normal mouse click instead of just placing
+   the text cursor (default contenteditable behaviour).
+============================================================ */
+document.getElementById('editor').addEventListener('click', (e) => {
+  const link = e.target.closest('a');
+  if(link){
+    e.preventDefault();
+    window.open(link.getAttribute('href'), '_blank', 'noopener');
+  }
+});
+
+/* ============================================================
+   Zoom: scales the note content for easier reading/writing.
+============================================================ */
+const K_ZOOM = 'nb_zoom';
+let zoomLevel = parseInt(localStorage.getItem(K_ZOOM), 10) || 100;
+function applyZoom(){
+  document.getElementById('editor').style.zoom = zoomLevel + '%';
+  document.getElementById('zoomLabel').textContent = zoomLevel + '%';
+  localStorage.setItem(K_ZOOM, zoomLevel);
+}
+function zoomIn(){ zoomLevel = Math.min(200, zoomLevel + 10); applyZoom(); }
+function zoomOut(){ zoomLevel = Math.max(50, zoomLevel - 10); applyZoom(); }
+function zoomReset(){ zoomLevel = 100; applyZoom(); }
+applyZoom();
+
 function fmt(cmd, val){
   document.getElementById('editor').focus();
   document.execCommand(cmd, false, val || null);
