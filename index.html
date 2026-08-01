@@ -164,7 +164,8 @@
     border:1px solid #4a3420; border-radius:14px; box-shadow:0 20px 40px rgba(0,0,0,.35);
     display:flex; flex-direction:column; overflow:hidden;
   }
-  .icon-row{ display:flex; gap:8px; padding:16px 16px 12px 16px; }
+  .icon-row{ display:flex; gap:8px; padding:16px 16px 12px 16px; flex-wrap:wrap; }
+  .icon-round{ min-width:36px; }
   .icon-round{
     flex:1; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
     background:#231a11; border:1px solid #4a3420; border-radius:8px; color:var(--brass-light); font-size:15px;
@@ -260,19 +261,76 @@
   .modal h3{ font-family:var(--font-display); font-style:italic; margin:0 0 16px 0; font-size:19px; }
   .modal .btn-row{ display:flex; gap:8px; margin-top:20px; }
 
+  .sidebar-backdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:25;
+  }
+  .sidebar-close-btn{ display:none; }
+  .sidebar.collapsed{ display:none; }
+
+  /* ---------- Reader mode ---------- */
+  .reader-btn{
+    padding:8px 14px; border:1px solid #cbbd9a; border-radius:var(--radius); background:transparent;
+    color:var(--text-on-paper); font-family:var(--font-mono); font-size:12.5px; white-space:nowrap;
+  }
+  .reader-btn:hover{ background:#e2d6b6; }
+  .reader-overlay{
+    position:fixed; inset:0; z-index:70; background:var(--paper); overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .reader-topbar{
+    display:flex; align-items:center; justify-content:space-between; padding:14px 24px;
+    border-bottom:1px solid var(--paper-2); background:var(--paper);
+  }
+  .reader-close{
+    padding:8px 14px; border:1px solid #cbbd9a; border-radius:8px; background:transparent;
+    color:var(--text-on-paper); font-family:var(--font-mono); font-size:12.5px;
+  }
+  .reader-close:hover{ background:var(--paper-2); }
+  .reader-topbar-controls{ display:flex; gap:6px; }
+  .reader-topbar-controls button{
+    padding:8px 12px; border:1px solid #cbbd9a; border-radius:8px; background:transparent;
+    color:var(--text-on-paper); font-family:var(--font-mono); font-size:12.5px;
+  }
+  .reader-topbar-controls button:hover{ background:var(--paper-2); }
+  .reader-scroll{ flex:1; overflow-y:auto; }
+  .reader-page{
+    max-width:720px; margin:0 auto; padding:50px 28px 100px 28px; color:var(--text-on-paper);
+    font-family:Georgia, 'Merriweather', serif; line-height:1.8;
+  }
+  .reader-page h1{ font-family:var(--font-display); font-style:italic; font-size:34px; margin:0 0 6px 0; }
+  #readerTags{ margin-bottom:24px; display:flex; gap:6px; flex-wrap:wrap; }
+  #readerContent img{ max-width:100%; border-radius:4px; margin:16px 0; display:block; }
+  #readerContent table{ border-collapse:collapse; width:100%; margin:16px 0; }
+  #readerContent td, #readerContent th{ border:1px solid #b9ab88; padding:8px 12px; }
+  #readerContent a{ color:var(--teal); }
+  @media (max-width:760px){
+    .reader-btn span{ display:none; }
+    .reader-page{ padding:30px 18px 80px 18px; }
+    .reader-page h1{ font-size:26px; }
+  }
+
   @media (max-width: 760px){
     .app{ padding:10px; gap:0; }
-    .sidebar{ position:fixed; z-index:30; height:calc(100% - 20px); top:10px; left:10px; width:260px; transform:translateX(-110%); transition:transform .2s ease; }
+    .sidebar{
+      position:fixed; z-index:30; height:calc(100% - 20px); top:10px; left:10px;
+      width:min(320px, 82vw); transform:translateX(-110%); transition:transform .2s ease;
+    }
     .sidebar.open{ transform:none; }
+    .sidebar.open ~ .sidebar-backdrop, .sidebar-backdrop.show{ display:block; }
+    .sidebar-close-btn{
+      display:flex; align-items:center; justify-content:center; width:30px; height:30px;
+      border-radius:8px; border:1px solid #4a3420; background:#231a11; color:var(--brass-light); font-size:14px;
+    }
+    .note-item h4{ white-space:normal; overflow:visible; text-overflow:clip; line-height:1.3; }
+    .note-item p{ white-space:normal; overflow:visible; text-overflow:clip; -webkit-line-clamp:2; display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
     .top-right-bar{ top:10px; right:10px; }
     .account-pill span{ display:none; }
     .main-topbar{ padding:14px 16px 10px 60px; }
     .toolbar{ padding:8px 16px 8px 60px; }
     .editor-wrap{ padding:14px 16px 50px 60px; }
     .paper-margin-line{ left:40px; }
-    .menu-toggle{ display:inline-flex !important; }
   }
-  .menu-toggle{ display:none; background:transparent; border:1px solid #cbbd9a; border-radius:var(--radius); padding:8px 10px; color:var(--text-on-paper); }
+  .menu-toggle{ display:inline-flex; background:transparent; border:1px solid #cbbd9a; border-radius:var(--radius); padding:8px 10px; color:var(--text-on-paper); align-items:center; justify-content:center; }
 
   /* ---------- Theme toggle ---------- */
   .theme-toggle{
@@ -399,6 +457,7 @@
       <button class="gear-btn" onclick="toggleSettingsMenu()" title="Inställningar">⚙</button>
     </div>
     <div class="settings-dropdown hidden" id="settingsDropdown">
+      <button onclick="openGithubSyncModal()">☁️ Synka via GitHub</button>
       <button onclick="exportData()">⬇ Exportera full backup</button>
       <button onclick="triggerImport()">⬆ Importera backup</button>
       <button onclick="emailAllNotes()">✉ Skicka alla anteckningar via e-post</button>
@@ -415,6 +474,7 @@
       <button class="icon-round" onclick="event.stopPropagation(); document.getElementById('exportDropdown').classList.toggle('hidden')" title="Exportera anteckning">✉</button>
       <button class="icon-round" onclick="toggleSearchBar()" title="Sök">🔍</button>
       <button class="icon-round" onclick="deleteActiveNote()" title="Radera anteckning">🗑</button>
+      <button class="sidebar-close-btn" onclick="closeSidebarMobile()" title="Stäng listan">✕</button>
     </div>
     <div class="search-wrap hidden" id="searchWrap">
       <input class="search" id="searchInput" type="text" placeholder="Sök anteckningar…" oninput="renderList()">
@@ -423,12 +483,15 @@
     <div class="note-list" id="noteList"></div>
     <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
   </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebarMobile()"></div>
 
   <main class="main">
     <div class="paper-margin-line"></div>
     <div class="main-topbar">
-      <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      <button class="menu-toggle" onclick="toggleSidebar()" title="Visa/göm anteckningslistan">☰</button>
       <input class="title-input" id="titleInput" placeholder="Titel…" oninput="scheduleSave()">
+      <button class="icon-btn-small reader-btn" onclick="openReader()" title="Öppna i läsläge">👓 Läsare</button>
+      <button class="reader-btn" onclick="openReader()" title="Öppna i läsläge">📖 Läsare</button>
       <div class="export-menu" id="exportMenu">
         <div class="export-dropdown hidden" id="exportDropdown">
           <button onclick="exportNoteMarkdown()">Som Markdown (.md)</button>
@@ -510,6 +573,47 @@
   <span id="undoToastText"></span>
   <button onclick="undoDelete()">Ångra</button>
   <button class="undo-toast-close" onclick="dismissUndoToast()">✕</button>
+</div>
+
+<div class="reader-overlay hidden" id="readerOverlay">
+  <div class="reader-topbar">
+    <button class="reader-close" onclick="closeReader()">✕ Stäng läsläge</button>
+    <div class="reader-topbar-controls">
+      <button onclick="readerZoom(-1)" title="Mindre text">A－</button>
+      <button onclick="readerZoom(1)" title="Större text">A＋</button>
+    </div>
+  </div>
+  <div class="reader-scroll">
+    <div class="reader-page" id="readerPage">
+      <h1 id="readerTitle"></h1>
+      <div id="readerTags"></div>
+      <div id="readerContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="githubSyncModal">
+  <div class="modal" style="max-width:420px;">
+    <h3>☁️ Synka via GitHub</h3>
+    <p style="font-size:12.5px; color:var(--muted); line-height:1.6; margin:0 0 16px 0;">
+      Anteckningarna laddas upp krypterade (samma kryptering som lagringen på enheten) till en <strong>privat Gist</strong> på ditt GitHub-konto. Du behöver en Personal Access Token med rättigheten <code>gist</code>.
+      <br><a href="https://github.com/settings/tokens/new?scopes=gist&description=Anteckningsbok" target="_blank" rel="noopener" style="color:var(--brass-light);">Skapa en token på GitHub ↗</a>
+    </p>
+    <div class="field">
+      <label for="githubPatInput">Personal Access Token</label>
+      <input type="password" id="githubPatInput" placeholder="ghp_…" autocomplete="off">
+    </div>
+    <button class="btn secondary" onclick="githubConnect()">Anslut / uppdatera token</button>
+    <div id="githubSyncStatus" style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted); min-height:1.4em; margin:12px 0;"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="githubUpload()">⬆ Ladda upp nu</button>
+      <button class="btn secondary" onclick="githubDownload()">⬇ Hämta nu</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeGithubSyncModal()">Stäng</button>
+      <button class="btn danger" onclick="githubDisconnect()">Koppla från</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-overlay hidden" id="deleteProfileModal">
@@ -661,6 +765,29 @@ document.addEventListener('keydown', (e) => {
     manualSave();
   }
 });
+
+function toggleSidebarMobile(){
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  sidebar.classList.toggle('open');
+  backdrop.classList.toggle('show', sidebar.classList.contains('open'));
+}
+function closeSidebarMobile(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('show');
+}
+function isMobileView(){ return window.innerWidth <= 760; }
+
+// The ☰ button: on mobile it slides the note list in/out as an overlay
+// (so it never blocks the text you're reading); on desktop it fully
+// hides/shows the list to give a wider, distraction-free writing area.
+function toggleSidebar(){
+  if(isMobileView()){
+    toggleSidebarMobile();
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  }
+}
 
 function toggleSearchBar(){
   const wrap = document.getElementById('searchWrap');
@@ -943,6 +1070,169 @@ function enterApp(profileName){
 /* ============================================================
    Notes CRUD (all in-memory, persisted via encrypted blob)
 ============================================================ */
+/* ============================================================
+   GitHub sync: stores the encrypted notes blob in a private Gist
+   so the same (password-protected) book can be reached from any
+   device. The Personal Access Token itself is kept encrypted on
+   this device with the same key as the notes — it only exists in
+   memory / storage while the book is unlocked.
+============================================================ */
+function gistIdKey(id){ return 'nb_gistid_' + id; }
+function patKey(id){ return 'nb_pat_' + id; }
+function lastSyncKey(id){ return 'nb_lastsync_' + id; }
+const GIST_FILENAME = 'anteckningsbok.enc';
+
+async function savePat(pat){
+  const enc = await encryptString(cryptoKey, pat);
+  localStorage.setItem(patKey(currentProfileId), enc);
+}
+async function loadPat(){
+  const enc = localStorage.getItem(patKey(currentProfileId));
+  if(!enc) return null;
+  try{ return await decryptString(cryptoKey, enc); }
+  catch(e){ return null; }
+}
+function getGistId(){ return localStorage.getItem(gistIdKey(currentProfileId)); }
+function setGistId(gid){ localStorage.setItem(gistIdKey(currentProfileId), gid); }
+function clearGithubSync(){
+  localStorage.removeItem(patKey(currentProfileId));
+  localStorage.removeItem(gistIdKey(currentProfileId));
+  localStorage.removeItem(lastSyncKey(currentProfileId));
+}
+
+async function githubApi(path, options){
+  options = options || {};
+  const pat = await loadPat();
+  if(!pat) throw new Error('Ingen token sparad. Anslut med en Personal Access Token först.');
+  const res = await fetch('https://api.github.com' + path, Object.assign({}, options, {
+    headers: Object.assign({
+      'Authorization': 'Bearer ' + pat,
+      'Accept': 'application/vnd.github+json'
+    }, options.headers || {})
+  }));
+  if(!res.ok){
+    let msg = res.status + ' ' + res.statusText;
+    try{ const body = await res.json(); if(body.message) msg = body.message; }catch(e){}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function openGithubSyncModal(){
+  document.getElementById('settingsDropdown').classList.add('hidden');
+  document.getElementById('githubPatInput').value = '';
+  updateGithubSyncStatusLabel();
+  document.getElementById('githubSyncModal').classList.remove('hidden');
+}
+function closeGithubSyncModal(){
+  document.getElementById('githubSyncModal').classList.add('hidden');
+}
+
+async function updateGithubSyncStatusLabel(){
+  const statusEl = document.getElementById('githubSyncStatus');
+  const gistId = getGistId();
+  const pat = await loadPat();
+  if(!pat || !gistId){
+    statusEl.textContent = 'Inte ansluten på den här enheten ännu.';
+    return;
+  }
+  const last = localStorage.getItem(lastSyncKey(currentProfileId));
+  statusEl.textContent = `✓ Ansluten (gist ${gistId.slice(0,8)}…)` + (last ? ` — senast synkad ${new Date(last).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}` : ' — inte synkad än');
+}
+
+async function githubConnect(){
+  const patInput = document.getElementById('githubPatInput').value.trim();
+  const statusEl = document.getElementById('githubSyncStatus');
+  if(!patInput){
+    // no new token typed — just refresh the status display
+    updateGithubSyncStatusLabel();
+    return;
+  }
+  statusEl.textContent = 'Ansluter…';
+  try{
+    await savePat(patInput);
+    let gistId = getGistId();
+    if(!gistId){
+      const created = await githubApi('/gists', {
+        method: 'POST',
+        body: JSON.stringify({
+          description: 'Anteckningsbok (krypterad av appen — innehållet är oläsligt utan lösenordet)',
+          public: false,
+          files: { [GIST_FILENAME]: { content: 'väntar på första uppladdning' } }
+        })
+      });
+      gistId = created.id;
+      setGistId(gistId);
+    } else {
+      // verify the token actually works against the existing gist
+      await githubApi('/gists/' + gistId);
+    }
+    document.getElementById('githubPatInput').value = '';
+    updateGithubSyncStatusLabel();
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = '⚠ Kunde inte ansluta: ' + e.message;
+  }
+}
+
+async function githubUpload(){
+  const statusEl = document.getElementById('githubSyncStatus');
+  const gistId = getGistId();
+  if(!gistId){ statusEl.textContent = 'Anslut med en token först.'; return; }
+  statusEl.textContent = 'Laddar upp…';
+  try{
+    updateActiveNoteFromInputs();
+    const encBlob = await encryptString(cryptoKey, JSON.stringify(notes));
+    await githubApi('/gists/' + gistId, {
+      method: 'PATCH',
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: encBlob } } })
+    });
+    localStorage.setItem(lastSyncKey(currentProfileId), new Date().toISOString());
+    statusEl.textContent = '✓ Uppladdat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = '⚠ Kunde inte ladda upp: ' + e.message;
+  }
+}
+
+async function githubDownload(){
+  const statusEl = document.getElementById('githubSyncStatus');
+  const gistId = getGistId();
+  if(!gistId){ statusEl.textContent = 'Anslut med en token först.'; return; }
+  if(!confirm('Detta ersätter anteckningarna på den här enheten med de som ligger sparade på GitHub. Fortsätt?')) return;
+  statusEl.textContent = 'Hämtar…';
+  try{
+    const gist = await githubApi('/gists/' + gistId);
+    const file = gist.files && gist.files[GIST_FILENAME];
+    if(!file) throw new Error('Hittade ingen anteckningsbok i den här gisten.');
+    let content = file.content;
+    if(file.truncated){
+      content = await (await fetch(file.raw_url)).text();
+    }
+    if(content === 'väntar på första uppladdning'){
+      statusEl.textContent = 'Inget har laddats upp från någon enhet än.';
+      return;
+    }
+    const json = await decryptString(cryptoKey, content);
+    notes = JSON.parse(json);
+    activeNoteId = null;
+    showWelcome();
+    renderList();
+    await persist();
+    localStorage.setItem(lastSyncKey(currentProfileId), new Date().toISOString());
+    statusEl.textContent = '✓ Hämtat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = '⚠ Kunde inte hämta (fel lösenord på den här enheten jämfört med datan, eller nätverksfel?): ' + e.message;
+  }
+}
+
+function githubDisconnect(){
+  if(!confirm('Koppla bort GitHub-synk på den här enheten? Själva datan på GitHub påverkas inte, bara kopplingen härifrån tas bort.')) return;
+  clearGithubSync();
+  updateGithubSyncStatusLabel();
+}
+
 async function persist(){
   const el = document.getElementById('saveStatus');
   try{
@@ -988,6 +1278,7 @@ function createNote(){
   renderList();
   loadNoteIntoEditor(note);
   persist();
+  if(isMobileView()) closeSidebarMobile();
   document.getElementById('titleInput').focus();
 }
 
@@ -1004,6 +1295,7 @@ function selectNote(id){
   activeNoteId = id;
   renderList();
   loadNoteIntoEditor(note);
+  if(isMobileView()) closeSidebarMobile();
 }
 
 function loadNoteIntoEditor(note){
@@ -1219,6 +1511,46 @@ function zoomIn(){ zoomLevel = Math.min(200, zoomLevel + 10); applyZoom(); }
 function zoomOut(){ zoomLevel = Math.max(50, zoomLevel - 10); applyZoom(); }
 function zoomReset(){ zoomLevel = 100; applyZoom(); }
 applyZoom();
+
+/* ============================================================
+   Reader mode: a clean, distraction-free full-screen view of the
+   current note — no toolbars, just the text and images, like a
+   browser's built-in reading mode.
+============================================================ */
+const K_READER_ZOOM = 'nb_reader_zoom';
+let readerZoomLevel = parseInt(localStorage.getItem(K_READER_ZOOM), 10) || 100;
+
+function openReader(){
+  if(!activeNoteId){ alert('Öppna en anteckning först.'); return; }
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  document.getElementById('readerTitle').textContent = note.title || 'Namnlös anteckning';
+  document.getElementById('readerContent').innerHTML = note.content || '';
+  const tagsEl = document.getElementById('readerTags');
+  tagsEl.innerHTML = (note.tags && note.tags.length)
+    ? note.tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')
+    : '';
+  applyReaderZoom();
+  document.getElementById('readerOverlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeReader(){
+  document.getElementById('readerOverlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+function applyReaderZoom(){
+  document.getElementById('readerPage').style.fontSize = readerZoomLevel + '%';
+  localStorage.setItem(K_READER_ZOOM, readerZoomLevel);
+}
+function readerZoom(dir){
+  readerZoomLevel = Math.max(70, Math.min(180, readerZoomLevel + dir * 10));
+  applyReaderZoom();
+}
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && !document.getElementById('readerOverlay').classList.contains('hidden')){
+    closeReader();
+  }
+});
 
 function fmt(cmd, val){
   document.getElementById('editor').focus();
