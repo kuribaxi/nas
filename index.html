@@ -884,10 +884,13 @@ function renderList(){
   const listEl = document.getElementById('noteList');
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   let sorted = [...notes].sort((a,b) => b.updated - a.updated);
-  if(activeTagFilter) sorted = sorted.filter(n => (n.tags||[]).includes(activeTagFilter));
+  // If the person is actively typing a text search, don't also silently
+  // intersect with a leftover tag filter — that combo can look like
+  // "search finds nothing" when really the tag filter is excluding results.
+  if(activeTagFilter && !q) sorted = sorted.filter(n => (n.tags||[]).includes(activeTagFilter));
   const filtered = q ? sorted.filter(n =>
     (n.title||'').toLowerCase().includes(q) ||
-    stripHtml(n.content).toLowerCase().includes(q) ||
+    stripHtml(n.content||'').toLowerCase().includes(q) ||
     (n.tags||[]).some(t => t.toLowerCase().includes(q))
   ) : sorted;
 
