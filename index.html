@@ -925,20 +925,53 @@ function toggleTagFilter(tag){
   renderList();
 }
 
+function updateActiveNoteFromInputs(){
+  if(!activeNoteId) return null;
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return null;
+  note.title = document.getElementById('titleInput').value;
+  note.content = document.getElementById('editor').innerHTML;
+  note.updated = Date.now();
+  return note;
+}
+
 function scheduleSave(){
   if(!activeNoteId) return;
+  updateActiveNoteFromInputs(); // keep in-memory state current on every keystroke
   clearTimeout(saveTimer);
   document.getElementById('saveStatus').textContent = 'Skriver…';
   saveTimer = setTimeout(async () => {
-    const note = notes.find(n => n.id === activeNoteId);
-    if(!note) return;
-    note.title = document.getElementById('titleInput').value;
-    note.content = document.getElementById('editor').innerHTML;
-    note.updated = Date.now();
     renderList();
     await persist();
-  }, 700);
+  }, 500);
 }
+
+// Safety net: even during long, continuous typing (which keeps resetting the
+// debounce above) this makes sure nothing goes more than a few seconds unsaved.
+setInterval(() => {
+  if(activeNoteId && cryptoKey){
+    updateActiveNoteFromInputs();
+    persist();
+  }
+}, 4000);
+
+// Flush immediately whenever focus leaves the note, the tab is hidden, or the
+// page is about to close/reload — this is what protects against "text
+// disappears when I refresh" happening mid-sentence.
+function flushSaveNow(){
+  if(activeNoteId && cryptoKey){
+    clearTimeout(saveTimer);
+    updateActiveNoteFromInputs();
+    persist();
+  }
+}
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushSaveNow(); });
+window.addEventListener('pagehide', flushSaveNow);
+window.addEventListener('beforeunload', flushSaveNow);
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('titleInput').addEventListener('blur', flushSaveNow);
+  document.getElementById('editor').addEventListener('blur', flushSaveNow);
+});
 
 function renderList(){
   const listEl = document.getElementById('noteList');
