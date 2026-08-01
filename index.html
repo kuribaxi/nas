@@ -6,6 +6,7 @@
 <title>Anteckningsboken</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Merriweather:wght@400;700&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
     --wood-1:#d9a35f;
@@ -67,7 +68,13 @@
   :focus-visible{ outline:2px solid var(--brass-light); outline-offset:2px; }
 
   /* ---------- Layout scaffolds ---------- */
-  .screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; position:relative; }
+  .auth-theme-btn{
+    position:absolute; top:24px; right:24px; background:linear-gradient(160deg,#2c2115,#1c150f);
+    border:1px solid #4a3420; border-radius:10px; width:40px; height:40px; font-size:16px;
+    color:var(--brass-light); box-shadow:0 8px 20px rgba(0,0,0,.35);
+  }
+  .auth-theme-btn:hover{ color:#e0b57a; }
   .hidden{ display:none !important; }
 
   /* ---------- Login / setup ---------- */
@@ -119,6 +126,10 @@
   .switch-mode a{ color:var(--brass-light); text-decoration:none; cursor:pointer; }
   .auth-error{ color:#e2897a; font-size:13px; margin:-6px 0 14px 0; min-height:1em; font-family:var(--font-mono); }
   .auth-note{ font-size:11.5px; color:var(--muted); margin-top:22px; line-height:1.5; }
+  .profile-btn{
+    display:flex; align-items:center; justify-content:space-between; width:100%;
+    margin-bottom:8px; text-align:left;
+  }
 
   /* ---------- App shell ---------- */
   .app{ display:none; height:100vh; padding:22px; gap:18px; position:relative; }
@@ -269,6 +280,15 @@
     color:var(--text-on-paper); flex:1; min-width:120px; padding:4px 0;
   }
   .tags-row input::placeholder{ color:#a89a7c; }
+  .tags-row input[type="color"]{
+    width:28px; height:28px; padding:2px; border:1px solid #cbbd9a; border-radius:6px;
+    background:#fffdf8; cursor:pointer;
+  }
+  .icon-btn-small{
+    width:26px; height:26px; border-radius:6px; border:1px solid #cbbd9a; background:transparent;
+    color:var(--text-on-paper); font-size:12px;
+  }
+  .icon-btn-small:hover{ background:var(--paper-2); }
   .tag-chip{
     font-family:var(--font-mono); font-size:10.5px; letter-spacing:.03em; padding:3px 9px;
     border-radius:20px; background:var(--teal); color:#eaf3f1; white-space:nowrap;
@@ -298,24 +318,35 @@
 
 <!-- ===================== AUTH SCREEN ===================== -->
 <div class="screen" id="authScreen">
+  <button class="gear-btn auth-theme-btn" id="authThemeToggleBtn" onclick="toggleTheme()" title="Byt mellan ljust och mörkt läge">🌙</button>
   <div class="auth-card">
     <div class="seal">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" stroke="#1b1204" stroke-width="1.4" fill="none"/><path d="M9 12l2 2 4-4" stroke="#1b1204" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <h1 id="authTitle">Lås upp boken</h1>
-    <p class="eyebrow" id="authEyebrow">Privat anteckningsbok</p>
+    <h1 id="authTitle">Dina böcker</h1>
+    <p class="eyebrow" id="authEyebrow">Privata anteckningsböcker</p>
 
-    <div id="loginForm">
+    <div id="profileList"></div>
+
+    <div id="loginForm" class="hidden">
+      <p style="text-align:left; font-family:var(--font-mono); font-size:12px; color:var(--muted); margin:-6px 0 16px 0;">
+        Bok: <strong id="loginProfileName" style="color:var(--text-on-ink);"></strong>
+      </p>
       <div class="field">
         <label for="loginPass">Lösenord</label>
         <input type="password" id="loginPass" autocomplete="current-password">
       </div>
       <div class="auth-error" id="loginError"></div>
       <button class="btn" onclick="handleLogin()">Lås upp</button>
-      <p class="switch-mode">Glömt lösenord? <a onclick="showReset()">Nollställ boken</a></p>
+      <button class="btn secondary" style="margin-top:8px;" onclick="showProfilePicker()">← Alla böcker</button>
+      <p class="switch-mode">Glömt lösenord? <a onclick="showReset()">Nollställ den här boken</a></p>
     </div>
 
     <div id="setupForm" class="hidden">
+      <div class="field">
+        <label for="setupProfileName">Namn på boken</label>
+        <input type="text" id="setupProfileName" placeholder="t.ex. Jobbanteckningar" maxlength="40">
+      </div>
       <div class="field">
         <label for="setupPass">Välj ett lösenord</label>
         <input type="password" id="setupPass" autocomplete="new-password">
@@ -326,6 +357,7 @@
       </div>
       <div class="auth-error" id="setupError"></div>
       <button class="btn" onclick="handleSetup()">Skapa boken</button>
+      <button class="btn secondary hidden" id="setupBackBtn" style="margin-top:8px;" onclick="showProfilePicker()">← Alla böcker</button>
     </div>
 
     <p class="auth-note">Anteckningarna krypteras i din webbläsare (AES-GCM) med en nyckel som härleds från lösenordet. Lösenordet skickas aldrig någonstans och lagras inte i klartext — glöms det bort finns ingen återställning.</p>
@@ -337,15 +369,16 @@
 
   <div class="top-right-bar">
     <div class="account-pill">
-      <span>Din anteckningsbok</span>
+      <span id="accountLabel">Din bok</span>
+      <button class="gear-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Byt mellan ljust och mörkt läge">🌙</button>
       <button class="gear-btn" onclick="toggleSettingsMenu()" title="Inställningar">⚙</button>
     </div>
     <div class="settings-dropdown hidden" id="settingsDropdown">
-      <button onclick="toggleTheme()" id="themeToggleBtn">🌓 Byt tema (ljus/mörk)</button>
       <button onclick="exportData()">⬇ Exportera full backup</button>
       <button onclick="triggerImport()">⬆ Importera backup</button>
-      <button onclick="lockApp()">🔒 Lås boken</button>
-      <button onclick="showReset()" style="color:#e2897a;">🗑 Nollställ allt</button>
+      <button onclick="emailAllNotes()">✉ Skicka alla anteckningar via e-post</button>
+      <button onclick="lockApp()">👥 Byt bok / lås</button>
+      <button onclick="deleteCurrentProfile()" style="color:#e2897a;">🗑 Radera den här boken</button>
     </div>
     <div class="save-pill" id="saveStatus"></div>
   </div>
@@ -374,6 +407,8 @@
         <div class="export-dropdown hidden" id="exportDropdown">
           <button onclick="exportNoteMarkdown()">Som Markdown (.md)</button>
           <button onclick="exportNotePdf()">Som PDF (skriv ut)</button>
+          <button onclick="exportNoteImage()">Som bild (PNG)</button>
+          <button onclick="emailNote()">✉ Skicka via e-post</button>
         </div>
       </div>
     </div>
@@ -381,6 +416,11 @@
       <span style="font-family:var(--font-mono); font-size:11px; color:#a89a7c;">Taggar:</span>
       <div id="tagChipsDisplay" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
       <input type="text" id="tagsInput" placeholder="lägg till tagg, enter" onkeydown="handleTagInput(event)">
+      <span style="font-family:var(--font-mono); font-size:11px; color:#a89a7c; margin-left:12px;">Färg:</span>
+      <input type="color" id="noteColorPicker" title="Färg på anteckningen i listan" onchange="setNoteColor(this.value)">
+      <span style="font-family:var(--font-mono); font-size:11px; color:#a89a7c;">Text:</span>
+      <input type="color" id="noteTextColorPicker" title="Textfärg på titeln i listan" onchange="setNoteTextColor(this.value)">
+      <button class="icon-btn-small" onclick="resetNoteColors()" title="Återställ färger">↺</button>
     </div>
     <div class="toolbar" id="toolbarRow">
       <select id="fontFamilySelect" onchange="setFontFamily(this.value)" title="Typsnitt">
@@ -432,12 +472,21 @@
 
 <script>
 /* ============================================================
-   Storage keys
+   Storage keys — scoped per profile so several "books" can
+   live side by side, each with its own password/encryption.
 ============================================================ */
-const K_SALT = 'nb_salt';
-const K_CHECK = 'nb_check';   // encrypted verification token
-const K_BLOB  = 'nb_blob';    // encrypted notes payload
+const K_PROFILES = 'nb_profiles'; // plain list of {id, name} — names only, never passwords
+function saltKey(id){ return 'nb_salt_' + id; }
+function checkKey(id){ return 'nb_check_' + id; }
+function blobKey(id){ return 'nb_blob_' + id; }
 
+function getProfiles(){
+  try{ return JSON.parse(localStorage.getItem(K_PROFILES)) || []; }
+  catch(e){ return []; }
+}
+function saveProfiles(list){ localStorage.setItem(K_PROFILES, JSON.stringify(list)); }
+
+let currentProfileId = null;  // which book is open
 let cryptoKey = null;         // in-memory only
 let notes = [];               // decrypted notes array, in memory only
 let activeNoteId = null;
@@ -451,12 +500,21 @@ const K_THEME = 'nb_theme';
 function initTheme(){
   const saved = localStorage.getItem(K_THEME) || 'dark';
   document.body.setAttribute('data-theme', saved);
+  updateThemeIcon();
 }
 function toggleTheme(){
   const current = document.body.getAttribute('data-theme') || 'dark';
   const next = current === 'dark' ? 'light' : 'dark';
   document.body.setAttribute('data-theme', next);
   localStorage.setItem(K_THEME, next);
+  updateThemeIcon();
+}
+function updateThemeIcon(){
+  const icon = (document.body.getAttribute('data-theme') || 'dark') === 'dark' ? '☀️' : '🌙';
+  const btn1 = document.getElementById('themeToggleBtn');
+  const btn2 = document.getElementById('authThemeToggleBtn');
+  if(btn1) btn1.textContent = icon;
+  if(btn2) btn2.textContent = icon;
 }
 initTheme();
 
@@ -522,23 +580,70 @@ async function decryptString(key, payload){
 }
 
 /* ============================================================
-   Auth flow
+   Auth flow — profile picker, then password for that profile
 ============================================================ */
-function isSetUp(){ return !!localStorage.getItem(K_SALT); }
-
 window.addEventListener('DOMContentLoaded', () => {
-  if(isSetUp()){
-    document.getElementById('loginForm').classList.remove('hidden');
-    document.getElementById('setupForm').classList.add('hidden');
-    document.getElementById('authTitle').textContent = 'Lås upp boken';
+  const profiles = getProfiles();
+  if(profiles.length === 0){
+    showSetupForm();
   } else {
-    document.getElementById('loginForm').classList.add('hidden');
-    document.getElementById('setupForm').classList.remove('hidden');
-    document.getElementById('authTitle').textContent = 'Skapa din bok';
+    showProfilePicker();
   }
 });
 
+function showProfilePicker(){
+  cryptoKey = null;
+  notes = [];
+  activeNoteId = null;
+  currentProfileId = null;
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('setupForm').classList.add('hidden');
+  document.getElementById('profileList').classList.remove('hidden');
+  renderProfileList();
+}
+
+function renderProfileList(){
+  const profiles = getProfiles();
+  const el = document.getElementById('profileList');
+  let html = '';
+  profiles.forEach(p => {
+    html += `<button class="btn secondary profile-btn" onclick="selectProfile('${p.id}')">📓 ${escapeHtml(p.name)}</button>`;
+  });
+  html += `<button class="btn" style="margin-top:4px;" onclick="showSetupForm()">+ Ny bok / profil</button>`;
+  el.innerHTML = html;
+  document.getElementById('authTitle').textContent = profiles.length ? 'Välj din bok' : 'Välkommen';
+  document.getElementById('authEyebrow').textContent = 'Privata anteckningsböcker';
+}
+
+function selectProfile(id){
+  const profiles = getProfiles();
+  const p = profiles.find(x => x.id === id);
+  if(!p) return;
+  currentProfileId = id;
+  document.getElementById('profileList').classList.add('hidden');
+  document.getElementById('setupForm').classList.add('hidden');
+  document.getElementById('loginForm').classList.remove('hidden');
+  document.getElementById('loginProfileName').textContent = p.name;
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('authTitle').textContent = 'Lås upp';
+  document.getElementById('loginPass').focus();
+}
+
+function showSetupForm(){
+  document.getElementById('profileList').classList.add('hidden');
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('setupForm').classList.remove('hidden');
+  document.getElementById('setupBackBtn').classList.toggle('hidden', getProfiles().length === 0);
+  document.getElementById('authTitle').textContent = 'Skapa ny bok';
+  document.getElementById('setupProfileName').value = '';
+  document.getElementById('setupPass').value = '';
+  document.getElementById('setupPass2').value = '';
+  document.getElementById('setupError').textContent = '';
+}
+
 async function handleSetup(){
+  const name = document.getElementById('setupProfileName').value.trim() || 'Min bok';
   const p1 = document.getElementById('setupPass').value;
   const p2 = document.getElementById('setupPass2').value;
   const errEl = document.getElementById('setupError');
@@ -546,64 +651,80 @@ async function handleSetup(){
   if(p1.length < 4){ errEl.textContent = 'Använd minst 4 tecken.'; return; }
   if(p1 !== p2){ errEl.textContent = 'Lösenorden matchar inte.'; return; }
 
+  const id = crypto.randomUUID();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltB64 = bufToB64(salt.buffer);
-  localStorage.setItem(K_SALT, saltB64);
+  localStorage.setItem(saltKey(id), saltB64);
   const key = await deriveKey(p1, saltB64);
   const check = await encryptString(key, 'unlock-ok');
-  localStorage.setItem(K_CHECK, check);
+  localStorage.setItem(checkKey(id), check);
   const blob = await encryptString(key, JSON.stringify([]));
-  localStorage.setItem(K_BLOB, blob);
+  localStorage.setItem(blobKey(id), blob);
 
+  const profiles = getProfiles();
+  profiles.push({ id, name });
+  saveProfiles(profiles);
+
+  currentProfileId = id;
   cryptoKey = key;
   notes = [];
-  enterApp();
+  enterApp(name);
 }
 
 async function handleLogin(){
   const p = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginError');
   errEl.textContent = '';
-  const saltB64 = localStorage.getItem(K_SALT);
+  const saltB64 = localStorage.getItem(saltKey(currentProfileId));
   try{
     const key = await deriveKey(p, saltB64);
-    const checkPayload = localStorage.getItem(K_CHECK);
+    const checkPayload = localStorage.getItem(checkKey(currentProfileId));
     const result = await decryptString(key, checkPayload);
     if(result !== 'unlock-ok') throw new Error('mismatch');
     cryptoKey = key;
-    const blobPayload = localStorage.getItem(K_BLOB);
+    const blobPayload = localStorage.getItem(blobKey(currentProfileId));
     const json = await decryptString(key, blobPayload);
     notes = JSON.parse(json);
     document.getElementById('loginPass').value = '';
-    enterApp();
+    const profile = getProfiles().find(x => x.id === currentProfileId);
+    enterApp(profile ? profile.name : 'Min bok');
   }catch(e){
     errEl.textContent = 'Fel lösenord.';
   }
 }
 
 function showReset(){
-  if(confirm('Detta raderar ALLA anteckningar permanent på den här enheten. Fortsätt?')){
-    localStorage.removeItem(K_SALT);
-    localStorage.removeItem(K_CHECK);
-    localStorage.removeItem(K_BLOB);
+  if(!currentProfileId) return;
+  if(confirm('Detta raderar boken "' + (getProfiles().find(x=>x.id===currentProfileId)||{}).name + '" och alla dess anteckningar permanent på den här enheten. Fortsätt?')){
+    localStorage.removeItem(saltKey(currentProfileId));
+    localStorage.removeItem(checkKey(currentProfileId));
+    localStorage.removeItem(blobKey(currentProfileId));
+    saveProfiles(getProfiles().filter(p => p.id !== currentProfileId));
     location.reload();
   }
 }
 
-function lockApp(){
-  cryptoKey = null;
-  notes = [];
-  activeNoteId = null;
-  document.getElementById('app').classList.remove('active');
-  document.getElementById('authScreen').classList.remove('hidden');
-  document.getElementById('loginForm').classList.remove('hidden');
-  document.getElementById('setupForm').classList.add('hidden');
-  document.getElementById('authTitle').textContent = 'Lås upp boken';
+function deleteCurrentProfile(){
+  if(!currentProfileId) return;
+  const profile = getProfiles().find(x => x.id === currentProfileId);
+  if(!confirm('Radera boken "' + (profile ? profile.name : '') + '" och ALLA dess anteckningar permanent? Detta går inte att ångra.')) return;
+  localStorage.removeItem(saltKey(currentProfileId));
+  localStorage.removeItem(checkKey(currentProfileId));
+  localStorage.removeItem(blobKey(currentProfileId));
+  saveProfiles(getProfiles().filter(p => p.id !== currentProfileId));
+  location.reload();
 }
 
-function enterApp(){
+function lockApp(){
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('authScreen').classList.remove('hidden');
+  showProfilePicker();
+}
+
+function enterApp(profileName){
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('app').classList.add('active');
+  document.getElementById('accountLabel').textContent = profileName || 'Din bok';
   renderList();
   showWelcome();
 }
@@ -614,7 +735,7 @@ function enterApp(){
 async function persist(){
   const json = JSON.stringify(notes);
   const blob = await encryptString(cryptoKey, json);
-  localStorage.setItem(K_BLOB, blob);
+  localStorage.setItem(blobKey(currentProfileId), blob);
   const el = document.getElementById('saveStatus');
   el.textContent = 'Sparat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
 }
@@ -657,6 +778,34 @@ function loadNoteIntoEditor(note){
   document.getElementById('editor').innerHTML = note.content;
   if(!note.tags) note.tags = [];
   renderTagChipsDisplay(note);
+  document.getElementById('noteColorPicker').value = note.color || '#4a3420';
+  document.getElementById('noteTextColorPicker').value = note.titleColor || '#e9e2d0';
+}
+
+/* ---------- Per-note list color / title color ---------- */
+function setNoteColor(color){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  note.color = color;
+  renderList();
+  persist();
+}
+function setNoteTextColor(color){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  note.titleColor = color;
+  renderList();
+  persist();
+}
+function resetNoteColors(){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  delete note.color;
+  delete note.titleColor;
+  document.getElementById('noteColorPicker').value = '#4a3420';
+  document.getElementById('noteTextColorPicker').value = '#e9e2d0';
+  renderList();
+  persist();
 }
 
 function showWelcome(){
@@ -749,14 +898,18 @@ function renderList(){
     return;
   }
 
-  listEl.innerHTML = filtered.map(n => `
-    <div class="note-item ${n.id===activeNoteId?'active':''}" onclick="selectNote('${n.id}')">
-      <h4>${escapeHtml(n.title) || 'Namnlös anteckning'}</h4>
+  listEl.innerHTML = filtered.map(n => {
+    const bg = n.color ? `background:linear-gradient(160deg, ${n.color}, ${n.color}cc); border-left:4px solid ${n.color};` : '';
+    const titleColor = n.titleColor ? `color:${n.titleColor};` : '';
+    return `
+    <div class="note-item ${n.id===activeNoteId?'active':''}" style="${bg}" onclick="selectNote('${n.id}')">
+      <h4 style="${titleColor}">${escapeHtml(n.title) || 'Namnlös anteckning'}</h4>
       <p>${escapeHtml(stripHtml(n.content).slice(0,80))}</p>
       ${(n.tags&&n.tags.length) ? `<div class="note-tags">${n.tags.map(t=>`<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
       <time>${new Date(n.updated).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</time>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function stripHtml(html){ const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; }
@@ -915,6 +1068,57 @@ function htmlToMarkdown(node){
   return out;
 }
 
+function exportNoteImage(){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  if(typeof html2canvas === 'undefined'){
+    alert('Bildexport kunde inte laddas (kräver internetuppkoppling). Försök igen när du är online.');
+    return;
+  }
+  const temp = document.createElement('div');
+  temp.style.cssText = 'position:fixed; left:-9999px; top:0; width:700px; background:#fffdf6; padding:36px; font-family:Georgia, serif; color:#2e2a1f;';
+  const tagsHtml = (note.tags && note.tags.length)
+    ? `<p style="font-family:monospace;font-size:12px;color:#8a7c5c;">Taggar: ${note.tags.map(escapeHtml).join(', ')}</p>` : '';
+  temp.innerHTML = `<h1 style="font-size:26px;margin:0 0 6px 0;">${escapeHtml(note.title || 'Namnlös anteckning')}</h1>${tagsHtml}<div style="line-height:1.6;">${note.content}</div>`;
+  document.body.appendChild(temp);
+  html2canvas(temp, {backgroundColor:'#fffdf6', scale:2}).then(canvas => {
+    document.body.removeChild(temp);
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(note.title || 'anteckning').replace(/[^a-z0-9åäöÅÄÖ\- ]/gi,'').trim() || 'anteckning'}.png`;
+      a.click();
+    });
+    document.getElementById('exportDropdown').classList.add('hidden');
+  }).catch(() => {
+    document.body.removeChild(temp);
+    alert('Kunde inte skapa bilden.');
+  });
+}
+
+function emailNote(){
+  const note = notes.find(n => n.id === activeNoteId);
+  if(!note) return;
+  const subject = note.title || 'Anteckning';
+  const body = stripHtml(note.content);
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  document.getElementById('exportDropdown').classList.add('hidden');
+}
+
+function emailAllNotes(){
+  if(notes.length === 0){ alert('Det finns inga anteckningar att skicka.'); return; }
+  const sorted = [...notes].sort((a,b) => b.updated - a.updated);
+  let body = '';
+  sorted.forEach(n => {
+    body += `${n.title || 'Namnlös anteckning'}\n${'-'.repeat(30)}\n${stripHtml(n.content)}\n\n`;
+  });
+  if(body.length > 1500){
+    if(!confirm('Alla anteckningar tillsammans är ganska långa och kan klippas av i e-postklienten. Vill du fortsätta ändå?')) return;
+  }
+  window.location.href = `mailto:?subject=${encodeURIComponent('Mina anteckningar')}&body=${encodeURIComponent(body)}`;
+  document.getElementById('settingsDropdown').classList.add('hidden');
+}
+
 function exportNoteMarkdown(){
   const note = notes.find(n => n.id === activeNoteId);
   if(!note) return;
@@ -962,16 +1166,18 @@ function exportNotePdf(){
    Export / import (encrypted blob, portable across devices)
 ============================================================ */
 function exportData(){
+  const profile = getProfiles().find(x => x.id === currentProfileId);
   const payload = {
-    salt: localStorage.getItem(K_SALT),
-    check: localStorage.getItem(K_CHECK),
-    blob: localStorage.getItem(K_BLOB),
+    profileName: profile ? profile.name : 'Min bok',
+    salt: localStorage.getItem(saltKey(currentProfileId)),
+    check: localStorage.getItem(checkKey(currentProfileId)),
+    blob: localStorage.getItem(blobKey(currentProfileId)),
     exported: new Date().toISOString()
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'anteckningsboken-backup.json';
+  a.download = (payload.profileName || 'anteckningsbok').replace(/[^a-z0-9åäöÅÄÖ\- ]/gi,'').trim() + '-backup.json';
   a.click();
 }
 
@@ -985,10 +1191,10 @@ function importData(ev){
     try{
       const payload = JSON.parse(reader.result);
       if(!payload.salt || !payload.check || !payload.blob) throw new Error('bad file');
-      if(!confirm('Detta ersätter dina nuvarande anteckningar på den här enheten med innehållet i filen. Fortsätt?')) return;
-      localStorage.setItem(K_SALT, payload.salt);
-      localStorage.setItem(K_CHECK, payload.check);
-      localStorage.setItem(K_BLOB, payload.blob);
+      if(!confirm('Detta ersätter anteckningarna i den öppna boken på den här enheten med innehållet i filen. Fortsätt?')) return;
+      localStorage.setItem(saltKey(currentProfileId), payload.salt);
+      localStorage.setItem(checkKey(currentProfileId), payload.check);
+      localStorage.setItem(blobKey(currentProfileId), payload.blob);
       alert('Importerat. Boken laddas om — lås upp med lösenordet som hörde till backupen.');
       location.reload();
     }catch(e){
