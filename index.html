@@ -1219,12 +1219,45 @@ function insertImage(ev){
   if(!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    document.getElementById('editor').focus();
-    document.execCommand('insertHTML', false, `<img src="${reader.result}">`);
-    scheduleSave();
+    // Small files (icons, screenshots etc.) go in as-is. Larger ones
+    // (typically phone photos, several MB) get scaled down and
+    // re-compressed as JPEG so they don't blow past the browser's
+    // localStorage quota (usually only ~5-10MB in total).
+    if(file.size <= 300 * 1024){
+      insertImageHtml(reader.result);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1400;
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+      insertImageHtml(dataUrl);
+    };
+    img.onerror = () => {
+      alert('Kunde inte läsa bilden. Prova en annan fil.');
+    };
+    img.src = reader.result;
   };
+  reader.onerror = () => alert('Kunde inte läsa filen.');
   reader.readAsDataURL(file);
   ev.target.value = '';
+}
+
+function insertImageHtml(src){
+  document.getElementById('editor').focus();
+  document.execCommand('insertHTML', false, `<img src="${src}">`);
+  scheduleSave();
 }
 
 /* ============================================================
