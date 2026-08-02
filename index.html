@@ -653,8 +653,16 @@
       <label for="githubPatInput">Personal Access Token</label>
       <input type="password" id="githubPatInput" placeholder="ghp_…" autocomplete="off">
     </div>
+    <div class="field">
+      <label for="githubGistIdInput">Gist-ID (valfritt — klistra in för att koppla till en <strong>befintlig</strong> anteckningsbok från en annan enhet)</label>
+      <input type="text" id="githubGistIdInput" placeholder="Lämna tomt för att skapa en ny">
+    </div>
     <button class="btn secondary" onclick="githubConnect()">Anslut / uppdatera token</button>
     <div id="githubSyncStatus" style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted); min-height:1.4em; margin:12px 0;"></div>
+    <div id="githubGistIdRow" class="hidden" style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+      <input type="text" id="githubGistIdDisplay" readonly style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid #4a3420; background:#1c150f; color:var(--text-on-ink); font-family:var(--font-mono); font-size:11.5px;">
+      <button class="icon-btn-small" onclick="copyGistId()" title="Kopiera Gist-ID">📋</button>
+    </div>
     <div class="btn-row">
       <button class="btn secondary" onclick="githubUpload()">⬆ Ladda upp nu</button>
       <button class="btn secondary" onclick="githubDownload()">⬇ Hämta nu</button>
@@ -1294,28 +1302,93 @@ async function updateGithubSyncStatusLabel(){
   const statusEl = document.getElementById('githubSyncStatus');
   const gistId = getGistId();
   const pat = await loadPat();
+  const idRow = document.getElementById('githubGistIdRow');
   if(!pat || !gistId){
     statusEl.textContent = 'Inte ansluten på den här enheten ännu.';
+    idRow.classList.add('hidden');
     return;
   }
+  document.getElementById('githubGistIdDisplay').value = gistId;
+  idRow.classList.remove('hidden');
   const last = localStorage.getItem(lastSyncKey(currentProfileId));
-  statusEl.textContent = `✓ Ansluten (gist ${gistId.slice(0,8)}…)` + (last ? ` — senast synkad ${new Date(last).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}` : ' — inte synkad än');
+  statusEl.textContent = `✓ Ansluten` + (last ? ` — senast synkad ${new Date(last).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}` : ' — inte synkad än') + '. Kopiera Gist-ID:t nedan för att koppla samma bok på en annan enhet.';
+}
+function copyGistId(){
+  const input = document.getElementById('githubGistIdDisplay');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    const statusEl = document.getElementById('githubSyncStatus');
+    const original = statusEl.textContent;
+    statusEl.textContent = '✓ Gist-ID kopierat! Klistra in det i "Gist-ID"-fältet på den andra enheten.';
+    setTimeout(() => { statusEl.textContent = original; }, 3000);
+  }).catch(() => {
+    alert('Kunde inte kopiera automatiskt — markera texten i rutan och kopiera manuellt (Ctrl+C).');
+  });
+}
+
+async function connectToExistingGist(gistId){
+  const password = prompt('Ange lösenordet för boken som redan finns i den Gisten (samma lösenord som du använder på den andra enheten):');
+  if(!password) return false;
+  const raw = await fetchGistFile(gistId);
+  if(raw === 'väntar på första uppladdning'){
+    alert('Den Gisten är tom — ladda upp från den andra enheten först.');
+    return false;
+  }
+  let payload;
+  try{ payload = JSON.parse(raw); }
+  catch(e){ throw new Error('Innehållet i den Gisten verkar inte vara en giltig anteckningsbok.'); }
+  if(!payload.salt || !payload.check || !payload.blob){
+    throw new Error('Innehållet i den Gisten verkar inte vara en giltig anteckningsbok.');
+  }
+  const key = await deriveKey(password, payload.salt);
+  const verify = await decryptString(key, payload.check);
+  if(verify !== 'unlock-ok'){
+    alert('Fel lösenord för den boken i Gisten.');
+    return false;
+  }
+  // Adopt the other device's salt/check so this device derives the same
+  // key from the same password from now on, then decrypt its data.
+  localStorage.setItem(saltKey(currentProfileId), payload.salt);
+  localStorage.setItem(checkKey(currentProfileId), payload.check);
+  cryptoKey = key;
+  const json = await decryptString(key, payload.blob);
+  const parsed = JSON.parse(json);
+  notes = parsed.notes || [];
+  trash = parsed.trash || [];
+  activeNoteId = null;
+  showWelcome();
+  renderList();
+  setGistId(gistId);
+  await persist();
+  localStorage.setItem(lastSyncKey(currentProfileId), new Date().toISOString());
+  return true;
 }
 
 async function githubConnect(){
   const patInput = document.getElementById('githubPatInput').value.trim();
+  const manualGistId = document.getElementById('githubGistIdInput').value.trim();
   const statusEl = document.getElementById('githubSyncStatus');
-  if(!patInput){
-    // no new token typed — just refresh the status display
+  if(!patInput && !manualGistId){
+    // nothing new typed — just refresh the status display
     updateGithubSyncStatusLabel();
     return;
   }
   statusEl.textContent = 'Ansluter…';
   try{
-    await savePat(patInput);
-    let gistId = getGistId();
+    if(patInput) await savePat(patInput);
+    let gistId = manualGistId || getGistId();
     let isNewGist = false;
-    if(!gistId){
+    let pairedExisting = false;
+    if(manualGistId){
+      // Connecting to an existing gist created on ANOTHER device: this
+      // device's local salt is different, so its key would never match.
+      // We fetch the gist, ask for the shared password, and — if it
+      // checks out — adopt that salt/check locally so future unlocks on
+      // this device derive the exact same key as the other device does.
+      pairedExisting = await connectToExistingGist(manualGistId);
+      if(!pairedExisting) return; // user cancelled or entered wrong password
+      gistId = manualGistId;
+    } else if(!gistId){
       const created = await githubApi('/gists', {
         method: 'POST',
         body: JSON.stringify({
@@ -1332,11 +1405,16 @@ async function githubConnect(){
       await githubApi('/gists/' + gistId);
     }
     document.getElementById('githubPatInput').value = '';
+    document.getElementById('githubGistIdInput').value = '';
     if(isNewGist){
       // don't leave a brand-new gist sitting with placeholder text —
       // push whatever is on this device right away.
       statusEl.textContent = 'Ansluten. Laddar upp det som finns på den här enheten…';
       await githubUpload();
+    } else if(pairedExisting){
+      statusEl.textContent = '✓ Ihopparad och hämtad från den befintliga boken.';
+      document.getElementById('githubGistIdDisplay').value = gistId;
+      document.getElementById('githubGistIdRow').classList.remove('hidden');
     } else {
       updateGithubSyncStatusLabel();
     }
@@ -1354,9 +1432,18 @@ async function githubUpload(){
   try{
     updateActiveNoteFromInputs();
     const encBlob = await encryptString(cryptoKey, JSON.stringify({ notes, trash }));
+    // Salt + check travel along with the blob (still just as encrypted/
+    // meaningless without the password) so another device can derive the
+    // exact same key from the same password instead of using its own
+    // locally-generated salt, which would never match.
+    const payload = JSON.stringify({
+      salt: localStorage.getItem(saltKey(currentProfileId)),
+      check: localStorage.getItem(checkKey(currentProfileId)),
+      blob: encBlob
+    });
     await githubApi('/gists/' + gistId, {
       method: 'PATCH',
-      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: encBlob } } })
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: payload } } })
     });
     localStorage.setItem(lastSyncKey(currentProfileId), new Date().toISOString());
     statusEl.textContent = '✓ Uppladdat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
@@ -1366,6 +1453,17 @@ async function githubUpload(){
   }
 }
 
+async function fetchGistFile(gistId){
+  const gist = await githubApi('/gists/' + gistId);
+  const file = gist.files && gist.files[GIST_FILENAME];
+  if(!file) throw new Error('Hittade ingen anteckningsbok i den här gisten.');
+  let raw = file.content;
+  if(file.truncated){
+    raw = await (await fetch(file.raw_url)).text();
+  }
+  return raw;
+}
+
 async function githubDownload(){
   const statusEl = document.getElementById('githubSyncStatus');
   const gistId = getGistId();
@@ -1373,21 +1471,20 @@ async function githubDownload(){
   if(!confirm('Detta ersätter anteckningarna på den här enheten med de som ligger sparade på GitHub. Fortsätt?')) return;
   statusEl.textContent = 'Hämtar…';
   try{
-    const gist = await githubApi('/gists/' + gistId);
-    const file = gist.files && gist.files[GIST_FILENAME];
-    if(!file) throw new Error('Hittade ingen anteckningsbok i den här gisten.');
-    let content = file.content;
-    if(file.truncated){
-      content = await (await fetch(file.raw_url)).text();
-    }
-    if(content === 'väntar på första uppladdning'){
+    const raw = await fetchGistFile(gistId);
+    if(raw === 'väntar på första uppladdning'){
       statusEl.textContent = 'Inget har laddats upp ännu — klicka "⬆ Ladda upp nu" på den enhet som har dina anteckningar.';
       return;
     }
-    const json = await decryptString(cryptoKey, content);
+    const payload = JSON.parse(raw);
+    // payload.blob was encrypted with THIS profile's own key, which is only
+    // valid if the salt matches — true here since this is a normal re-sync
+    // on a device that's already correctly paired (see connectToExistingGist
+    // for the cross-device pairing step that makes this the case).
+    const json = await decryptString(cryptoKey, payload.blob);
     const parsed = JSON.parse(json);
-    if(Array.isArray(parsed)){ notes = parsed; trash = []; }
-    else { notes = parsed.notes || []; trash = parsed.trash || []; }
+    notes = parsed.notes || [];
+    trash = parsed.trash || [];
     activeNoteId = null;
     showWelcome();
     renderList();
@@ -1396,7 +1493,7 @@ async function githubDownload(){
     statusEl.textContent = '✓ Hämtat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
   }catch(e){
     console.error(e);
-    statusEl.textContent = '⚠ Kunde inte hämta (fel lösenord på den här enheten jämfört med datan, eller nätverksfel?): ' + e.message;
+    statusEl.textContent = '⚠ Kunde inte hämta: ' + e.message + ' (Om det här är en ny enhet, använd Gist-ID-fältet ovan istället för att bara klicka Hämta — det gör den viktiga kopplingen mellan lösenord och kryptering.)';
   }
 }
 
