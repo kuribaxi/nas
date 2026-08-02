@@ -165,9 +165,8 @@
     display:flex; flex-direction:column; overflow:hidden;
   }
   .icon-row{ display:flex; gap:8px; padding:16px 16px 12px 16px; flex-wrap:wrap; }
-  .icon-round{ min-width:36px; }
   .icon-round{
-    flex:1; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+    flex:0 0 40px; width:40px; height:40px; display:flex; align-items:center; justify-content:center;
     background:#231a11; border:1px solid #4a3420; border-radius:8px; color:var(--brass-light); font-size:15px;
   }
   .icon-round:hover{ background:#3a2a17; color:#e0b57a; }
@@ -458,6 +457,7 @@
       <button class="gear-btn" onclick="toggleSettingsMenu()" title="Inställningar">⚙</button>
     </div>
     <div class="settings-dropdown hidden" id="settingsDropdown">
+      <button onclick="openTrashModal()">🗑 Papperskorg</button>
       <button onclick="openGithubSyncModal()">☁️ Synka via GitHub</button>
       <button onclick="exportData()">⬇ Exportera full backup</button>
       <button onclick="triggerImport()">⬆ Importera backup</button>
@@ -481,6 +481,8 @@
     <div class="search-wrap hidden" id="searchWrap">
       <input class="search" id="searchInput" type="text" placeholder="Sök anteckningar…" oninput="renderList()">
     </div>
+    <button class="trash-bar hidden" id="trashBar" onclick="toggleTrashPanel()">🗑 Papperskorgen (<span id="trashCount">0</span>) — klicka för att visa</button>
+    <div class="trash-panel hidden" id="trashPanel"></div>
     <div class="tag-filter-row" id="tagFilterRow"></div>
     <div class="note-list" id="noteList"></div>
     <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
@@ -588,6 +590,54 @@
       <h1 id="readerTitle"></h1>
       <div id="readerTags"></div>
       <div id="readerContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="emptyTrashModal">
+  <div class="modal">
+    <h3>Töm papperskorgen?</h3>
+    <p style="font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 16px 0;">
+      Detta raderar <strong id="emptyTrashCount">0</strong> anteckning(ar) permanent — går inte att ångra. Ange lösenordet för att bekräfta.
+    </p>
+    <div class="field">
+      <label for="emptyTrashPass">Lösenord</label>
+      <input type="password" id="emptyTrashPass" autocomplete="current-password" onkeydown="if(event.key==='Enter') confirmEmptyTrash();">
+    </div>
+    <div class="auth-error" id="emptyTrashError"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeEmptyTrashModal()">Avbryt</button>
+      <button class="btn danger" onclick="confirmEmptyTrash()">Radera permanent</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="trashModal">
+  <div class="modal" style="max-width:460px;">
+    <h3>🗑 Papperskorg</h3>
+    <p style="font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 14px 0;">
+      Raderade anteckningar ligger kvar här tills du återställer dem eller raderar dem permanent — permanent radering kräver alltid lösenordet.
+    </p>
+    <div id="trashList" style="max-height:340px; overflow-y:auto; margin-bottom:14px;"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closeTrashModal()">Stäng</button>
+      <button class="btn danger" onclick="emptyTrash()">Töm papperskorgen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="passwordConfirmModal">
+  <div class="modal">
+    <h3>Bekräfta med lösenord</h3>
+    <p id="passwordConfirmText" style="font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 16px 0;"></p>
+    <div class="field">
+      <label for="passwordConfirmInput">Lösenord</label>
+      <input type="password" id="passwordConfirmInput" autocomplete="current-password" onkeydown="if(event.key==='Enter') submitPasswordConfirmation();">
+    </div>
+    <div class="auth-error" id="passwordConfirmError"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="closePasswordConfirmModal()">Avbryt</button>
+      <button class="btn danger" onclick="submitPasswordConfirmation()">Bekräfta</button>
     </div>
   </div>
 </div>
@@ -718,6 +768,7 @@ function saveProfiles(list){ localStorage.setItem(K_PROFILES, JSON.stringify(lis
 let currentProfileId = null;  // which book is open
 let cryptoKey = null;         // in-memory only
 let notes = [];               // decrypted notes array, in memory only
+let trash = [];                // soft-deleted notes, kept until restored or permanently removed
 let activeNoteId = null;
 let saveTimer = null;
 let activeTagFilter = null;
@@ -806,7 +857,9 @@ function deleteActiveNote(){
 }
 
 function performDelete(note){
+  note.deletedAt = Date.now();
   notes = notes.filter(n => n.id !== note.id);
+  trash.unshift(note);
   if(activeNoteId === note.id){ activeNoteId = null; showWelcome(); }
   renderList();
   persist();
@@ -816,7 +869,7 @@ function performDelete(note){
 function showUndoToast(note){
   lastDeletedNote = note;
   clearTimeout(lastDeletedTimeout);
-  document.getElementById('undoToastText').textContent = `"${note.title || 'Namnlös anteckning'}" raderad.`;
+  document.getElementById('undoToastText').textContent = `"${note.title || 'Namnlös anteckning'}" raderad — ligger kvar i papperskorgen tills du tömmer den.`;
   document.getElementById('undoToast').classList.remove('hidden');
   lastDeletedTimeout = setTimeout(dismissUndoToast, 7000);
 }
@@ -829,13 +882,8 @@ function dismissUndoToast(){
 
 function undoDelete(){
   if(!lastDeletedNote) return;
-  const note = lastDeletedNote;
-  notes.unshift(note);
-  activeNoteId = note.id;
+  restoreFromTrash(lastDeletedNote.id);
   dismissUndoToast();
-  renderList();
-  loadNoteIntoEditor(note);
-  persist();
 }
 
 /* ============================================================
@@ -943,6 +991,111 @@ function showSetupForm(){
   document.getElementById('setupError').textContent = '';
 }
 
+/* ============================================================
+   Trash: deleted notes stay here (still encrypted, still synced)
+   until restored or permanently purged. Permanent removal always
+   requires re-entering the book's password.
+============================================================ */
+function openTrashModal(){
+  document.getElementById('settingsDropdown').classList.add('hidden');
+  renderTrashModal();
+  document.getElementById('trashModal').classList.remove('hidden');
+}
+function closeTrashModal(){
+  document.getElementById('trashModal').classList.add('hidden');
+}
+function renderTrashModal(){
+  const listEl = document.getElementById('trashList');
+  if(trash.length === 0){
+    listEl.innerHTML = '<div style="padding:20px 0; text-align:center; color:var(--muted); font-size:12.5px;">Papperskorgen är tom.</div>';
+    return;
+  }
+  const sorted = [...trash].sort((a,b) => (b.deletedAt||0) - (a.deletedAt||0));
+  listEl.innerHTML = sorted.map(n => `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #3a4557;">
+      <div style="min-width:0;">
+        <div style="font-family:var(--font-display); font-style:italic; font-size:14px; color:var(--text-on-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(n.title) || 'Namnlös anteckning'}</div>
+        <div style="font-family:var(--font-mono); font-size:10px; color:var(--muted);">Raderad ${n.deletedAt ? new Date(n.deletedAt).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'}) : ''}</div>
+      </div>
+      <div style="display:flex; gap:6px; flex:none;">
+        <button class="icon-btn-small" onclick="restoreFromTrash('${n.id}')" title="Återställ">↺</button>
+        <button class="icon-btn-small" onclick="permanentlyDeleteTrashedNote('${n.id}')" title="Radera permanent" style="color:#e2897a;">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function restoreFromTrash(id){
+  const idx = trash.findIndex(n => n.id === id);
+  if(idx === -1) return;
+  const note = trash.splice(idx, 1)[0];
+  delete note.deletedAt;
+  notes.unshift(note);
+  renderTrashModal();
+  renderList();
+  persist();
+}
+
+function permanentlyDeleteTrashedNote(id){
+  const note = trash.find(n => n.id === id);
+  if(!note) return;
+  requestPasswordConfirmation(
+    `Ange lösenordet för att radera "${note.title || 'Namnlös anteckning'}" permanent. Detta går inte att ångra.`,
+    () => {
+      trash = trash.filter(n => n.id !== id);
+      renderTrashModal();
+      persist();
+    }
+  );
+}
+
+function emptyTrash(){
+  if(trash.length === 0) return;
+  requestPasswordConfirmation(
+    `Ange lösenordet för att tömma hela papperskorgen (${trash.length} anteckning${trash.length===1?'':'ar'}) permanent. Detta går inte att ångra.`,
+    () => {
+      trash = [];
+      renderTrashModal();
+      persist();
+    }
+  );
+}
+
+/* ---------- Generic "confirm with password" modal, reused for any
+   permanent/destructive action ---------- */
+let pendingPasswordAction = null;
+function requestPasswordConfirmation(promptText, onConfirmed){
+  document.getElementById('passwordConfirmText').textContent = promptText;
+  document.getElementById('passwordConfirmInput').value = '';
+  document.getElementById('passwordConfirmError').textContent = '';
+  pendingPasswordAction = onConfirmed;
+  document.getElementById('passwordConfirmModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('passwordConfirmInput').focus(), 50);
+}
+function closePasswordConfirmModal(){
+  document.getElementById('passwordConfirmModal').classList.add('hidden');
+  pendingPasswordAction = null;
+}
+async function submitPasswordConfirmation(){
+  const pass = document.getElementById('passwordConfirmInput').value;
+  const errEl = document.getElementById('passwordConfirmError');
+  errEl.textContent = '';
+  if(!pass){ errEl.textContent = 'Ange lösenordet.'; return; }
+  try{
+    const saltB64 = localStorage.getItem(saltKey(currentProfileId));
+    const key = await deriveKey(pass, saltB64);
+    const checkPayload = localStorage.getItem(checkKey(currentProfileId));
+    const result = await decryptString(key, checkPayload);
+    if(result !== 'unlock-ok') throw new Error('mismatch');
+  }catch(e){
+    errEl.textContent = 'Fel lösenord.';
+    return;
+  }
+  const action = pendingPasswordAction;
+  closePasswordConfirmModal();
+  if(action) action();
+}
+
 async function handleSetup(){
   const name = document.getElementById('setupProfileName').value.trim() || 'Min bok';
   const p1 = document.getElementById('setupPass').value;
@@ -959,7 +1112,7 @@ async function handleSetup(){
   const key = await deriveKey(p1, saltB64);
   const check = await encryptString(key, 'unlock-ok');
   localStorage.setItem(checkKey(id), check);
-  const blob = await encryptString(key, JSON.stringify([]));
+  const blob = await encryptString(key, JSON.stringify({ notes: [], trash: [] }));
   await idbSet(blobKey(id), blob);
 
   const profiles = getProfiles();
@@ -969,6 +1122,7 @@ async function handleSetup(){
   currentProfileId = id;
   cryptoKey = key;
   notes = [];
+  trash = [];
   enterApp(name);
 }
 
@@ -991,7 +1145,15 @@ async function handleLogin(){
   try{
     const blobPayload = await readBlobWithMigration(currentProfileId);
     const json = await decryptString(key, blobPayload);
-    notes = JSON.parse(json);
+    const parsed = JSON.parse(json);
+    if(Array.isArray(parsed)){
+      // old format: the blob was just the notes array with no trash
+      notes = parsed;
+      trash = [];
+    } else {
+      notes = parsed.notes || [];
+      trash = parsed.trash || [];
+    }
   }catch(e){
     console.error('Kunde inte läsa anteckningarna:', e);
     errEl.textContent = 'Lösenordet stämde, men anteckningarna kunde inte läsas in. Försök igen eller ladda om sidan.';
@@ -1182,7 +1344,7 @@ async function githubUpload(){
   statusEl.textContent = 'Laddar upp…';
   try{
     updateActiveNoteFromInputs();
-    const encBlob = await encryptString(cryptoKey, JSON.stringify(notes));
+    const encBlob = await encryptString(cryptoKey, JSON.stringify({ notes, trash }));
     await githubApi('/gists/' + gistId, {
       method: 'PATCH',
       body: JSON.stringify({ files: { [GIST_FILENAME]: { content: encBlob } } })
@@ -1214,7 +1376,9 @@ async function githubDownload(){
       return;
     }
     const json = await decryptString(cryptoKey, content);
-    notes = JSON.parse(json);
+    const parsed = JSON.parse(json);
+    if(Array.isArray(parsed)){ notes = parsed; trash = []; }
+    else { notes = parsed.notes || []; trash = parsed.trash || []; }
     activeNoteId = null;
     showWelcome();
     renderList();
@@ -1236,7 +1400,7 @@ function githubDisconnect(){
 async function persist(){
   const el = document.getElementById('saveStatus');
   try{
-    const json = JSON.stringify(notes);
+    const json = JSON.stringify({ notes, trash });
     const blob = await encryptString(cryptoKey, json);
     await idbSet(blobKey(currentProfileId), blob);
     el.textContent = 'Sparat ' + new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
