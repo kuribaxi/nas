@@ -1314,6 +1314,7 @@ async function githubConnect(){
   try{
     await savePat(patInput);
     let gistId = getGistId();
+    let isNewGist = false;
     if(!gistId){
       const created = await githubApi('/gists', {
         method: 'POST',
@@ -1325,12 +1326,20 @@ async function githubConnect(){
       });
       gistId = created.id;
       setGistId(gistId);
+      isNewGist = true;
     } else {
       // verify the token actually works against the existing gist
       await githubApi('/gists/' + gistId);
     }
     document.getElementById('githubPatInput').value = '';
-    updateGithubSyncStatusLabel();
+    if(isNewGist){
+      // don't leave a brand-new gist sitting with placeholder text —
+      // push whatever is on this device right away.
+      statusEl.textContent = 'Ansluten. Laddar upp det som finns på den här enheten…';
+      await githubUpload();
+    } else {
+      updateGithubSyncStatusLabel();
+    }
   }catch(e){
     console.error(e);
     statusEl.textContent = '⚠ Kunde inte ansluta: ' + e.message;
@@ -1372,7 +1381,7 @@ async function githubDownload(){
       content = await (await fetch(file.raw_url)).text();
     }
     if(content === 'väntar på första uppladdning'){
-      statusEl.textContent = 'Inget har laddats upp från någon enhet än.';
+      statusEl.textContent = 'Inget har laddats upp ännu — klicka "⬆ Ladda upp nu" på den enhet som har dina anteckningar.';
       return;
     }
     const json = await decryptString(cryptoKey, content);
